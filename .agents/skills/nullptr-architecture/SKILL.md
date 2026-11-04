@@ -44,5 +44,5 @@ When editing or generating code in this repository:
 - [ ] **No `process.env`**: Always import `getConfig...` from `@/config`.
 - [ ] **No `.js` extensions**: Do not write `.js` in TypeScript imports.
 - [ ] **Use `@/*` aliases**: Always use `@/core/...`, `@/domain/...`, `@/services/...`, `@/utils/...`.
-- [ ] **Preserve bot identity**: Keep `"nullptr (NullPointer Bot)"` in command descriptions, messages, and logs.
+- [ ] **Preserve bot identity & creator**: Keep `"nullptr (NullPointer Bot)"` as the bot identity and attribute creation & management to **Shawan Mandal** (`hello@imshawan.dev`).
 - [ ] **Verify builds**: Run `npm run typecheck` and `npm run build` after making changes.

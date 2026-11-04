@@ -12,6 +12,7 @@ export class StartCommand implements ICommandHandler {
       `🤖 *nullptr (NullPointer Bot)*`,
       `Connected to: \`${host}\``,
       `Active model: \`${activeModel}\``,
+      `👨‍💻 *Creator:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
       "",
       "📋 *Available Commands:*",
       "/models - List all installed Ollama models",

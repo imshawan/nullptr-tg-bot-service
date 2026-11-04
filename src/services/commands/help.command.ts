@@ -12,6 +12,7 @@ export class HelpCommand implements ICommandHandler {
       `📖 *nullptr (NullPointer Bot) Guide*`,
       `Connected to: \`${host}\``,
       `Active model: \`${activeModel}\``,
+      `👨‍💻 *Created & Managed by:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
       "",
       "📋 *Command Reference:*",
       "• `/start` — Welcome screen & quick bot overview",

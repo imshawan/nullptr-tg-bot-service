@@ -143,3 +143,13 @@ If your Ollama instance is running on an Oracle Cloud Compute instance:
    ```bash
    journalctl -u nullptr-tg-bot -f
    ```
+
+---
+
+## 👨‍💻 Author & Maintainer
+
+**nullptr (NullPointer Bot)** is authored, created, and maintained by:
+- **Shawan Mandal**
+- Email: [hello@imshawan.dev](mailto:hello@imshawan.dev)
+- Website: [imshawan.dev](https://imshawan.dev)
+- GitHub: [@imshawan](https://github.com/imshawan)
