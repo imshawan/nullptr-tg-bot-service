@@ -26,7 +26,7 @@ const envSchema = z.object({
   SYSTEM_PROMPT: z
     .string()
     .default(
-      "You are nullptr (NullPointer Bot), an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer."
+      "You are NullPtr, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer."
     ),
   MAX_HISTORY_MESSAGES: z.string().default("20").transform((val) => parseInt(val, 10)),
   LLM_QUERY_TIMEOUT_MS: z.string().default("600000").transform((val) => parseInt(val, 10)),

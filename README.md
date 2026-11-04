@@ -84,7 +84,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 ALLOWED_USER_ID=your_numeric_telegram_id
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
-SYSTEM_PROMPT="You are nullptr (NullPointer Bot), an expert AI assistant."
+SYSTEM_PROMPT="You are NullPtr, an expert AI assistant."
 LOG_LEVEL=info
 ```
 
