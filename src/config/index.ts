@@ -26,7 +26,7 @@ const envSchema = z.object({
   SYSTEM_PROMPT: z
     .string()
     .default(
-      "You are NullPtr, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer."
+      "You are nullptr (NullPointer Bot), an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer."
     ),
   MAX_HISTORY_MESSAGES: z.string().default("20").transform((val) => parseInt(val, 10)),
   LLM_QUERY_TIMEOUT_MS: z.string().default("600000").transform((val) => parseInt(val, 10)),
@@ -43,6 +43,12 @@ const envSchema = z.object({
   // Optional cache / storage
   REDIS_HOST: z.string().default("localhost"),
   REDIS_PORT: z.string().default("6379").transform((val) => parseInt(val, 10)),
+
+  // Media Downloader (yt-dlp) configuration
+  YTDLP_PATH: z.string().optional(),
+  FFMPEG_PATH: z.string().optional(),
+  DOWNLOAD_TEMP_DIR: z.string().optional(),
+  MAX_DOWNLOAD_SIZE_MB: z.string().default("50").transform((val) => parseInt(val, 10)),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -110,3 +116,8 @@ export const getConfigGeminiModel = (): string => env.GEMINI_MODEL;
 
 export const getConfigRedisHost = (): string => env.REDIS_HOST;
 export const getConfigRedisPort = (): number => env.REDIS_PORT;
+
+export const getConfigYtDlpPath = (): string | undefined => env.YTDLP_PATH;
+export const getConfigFfmpegPath = (): string | undefined => env.FFMPEG_PATH;
+export const getConfigDownloadTempDir = (): string | undefined => env.DOWNLOAD_TEMP_DIR;
+export const getConfigMaxDownloadSizeMb = (): number => env.MAX_DOWNLOAD_SIZE_MB;

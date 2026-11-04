@@ -1,6 +1,7 @@
 import { ITelegramClient } from "@/domain/telegram/telegram-client.interface";
 import { ILlmProvider } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
+import { IDownloaderService } from "@/domain/downloader/downloader.interface";
 import { ILogger } from "@/core/logger/logger.interface";
 
 export interface CommandContext {
@@ -11,6 +12,7 @@ export interface CommandContext {
   telegram: ITelegramClient;
   llm: ILlmProvider;
   sessionStore: ISessionStore;
+  downloader: IDownloaderService;
   logger: ILogger;
 }
 

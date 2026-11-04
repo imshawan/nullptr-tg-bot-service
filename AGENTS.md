@@ -99,3 +99,4 @@ For in-depth procedures and workflows, consult the specialized workspace skills:
 - **`add-bot-command`** (`.agents/skills/add-bot-command/SKILL.md`): Adding new slash commands and Telegram menu auto-registration.
 - **`add-llm-provider`** (`.agents/skills/add-llm-provider/SKILL.md`): Implementing new inference providers (OpenAI, Claude, Gemini, vLLM).
 - **`deploy-oracle-cloud`** (`.agents/skills/deploy-oracle-cloud/SKILL.md`): Oracle Cloud deployment, systemd configuration, and firewall troubleshooting.
+- **ytdlp-media-download** (.agents/skills/ytdlp-media-download/SKILL.md): yt-dlp media downloader architecture, link detection, format extraction, and Telegram 50MB limits.

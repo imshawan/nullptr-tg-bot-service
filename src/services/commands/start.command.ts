@@ -15,6 +15,7 @@ export class StartCommand implements ICommandHandler {
       `👨‍💻 *Creator:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
       "",
       "📋 *Available Commands:*",
+      "/download <url> - Download video or MP3 audio from any link",
       "/models - List all installed Ollama models",
       "/model <name> - Switch active model",
       "/clear - Clear conversation memory",

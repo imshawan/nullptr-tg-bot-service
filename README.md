@@ -1,12 +1,12 @@
-# nullptr (NullPointer Bot) — Enterprise Telegram LLM Service
+# nullptr (NullPointer Bot) — Enterprise Telegram LLM & Media Service
 
-**nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally).
+**nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus media downloading (MP3, MP4, 720p, 480p) powered by `yt-dlp`.
 
 ---
 
 ## 🏛️ Enterprise Architecture & Design Patterns
 
-The project follows **Clean / Hexagonal Architecture** principles, strictly decoupling Telegram communication, LLM inference, session storage, and domain business logic:
+The project follows **Clean / Hexagonal Architecture** principles, strictly decoupling Telegram communication, LLM inference, media downloading, session storage, and domain business logic:
 
 ```
 src/
@@ -21,6 +21,10 @@ src/
 │   └── types/
 │       └── common.types.ts                 # Shared system types & lifecycle interfaces
 ├── domain/                                 # Domain Core
+│   ├── downloader/                         # Media Downloader Subsystem (yt-dlp)
+│   │   ├── downloader.types.ts             # Formats, qualities & metadata interfaces
+│   │   ├── downloader.interface.ts         # IDownloaderService abstraction
+│   │   └── ytdlp.downloader.ts             # Binary resolver, metadata extractor & download runner
 │   ├── llm/
 │   │   ├── llm-provider.interface.ts       # ILlmProvider abstraction
 │   │   └── ollama.provider.ts              # Concrete Ollama provider (swappable)
@@ -28,32 +32,46 @@ src/
 │   │   ├── session-store.interface.ts      # ISessionStore abstraction
 │   │   └── in-memory-session.store.ts      # Session manager (swappable with Redis/DB)
 │   └── telegram/
-│       ├── telegram.types.ts               # Telegram DTOs & payloads
+│       ├── telegram.types.ts               # Telegram DTOs, InlineKeyboards & payloads
 │       ├── telegram-client.interface.ts    # ITelegramClient interface
 │       └── telegram.client.ts              # Resilient Telegram Bot API client
 ├── services/                               # Application Service Layer
 │   ├── commands/                           # Command Pattern Implementation
 │   │   ├── command.interface.ts            # ICommandHandler contract & context
-│   │   ├── start.command.ts                # /start & /help
-│   │   ├── models.command.ts               # /models
-│   │   ├── model.command.ts                # /model <name>
-│   │   ├── clear.command.ts                # /clear
-│   │   └── status.command.ts               # /status
+│   │   ├── start.command.ts                # /start welcome overview
+│   │   ├── help.command.ts                 # /help guide
+│   │   ├── download.command.ts             # /download <url> [format]
+│   │   ├── models.command.ts               # /models list
+│   │   ├── model.command.ts                # /model <name> switch
+│   │   ├── clear.command.ts                # /clear context
+│   │   └── status.command.ts               # /status latency & health
 │   ├── command.registry.ts                 # Command dispatcher & Telegram menu mapper
-│   └── bot.service.ts                      # Update processing, streaming & throttling
+│   └── bot.service.ts                      # Updates, streaming, link detection & callbacks
 ├── utils/                                  # Utilities
-│   └── text.utils.ts                       # Message chunking & formatting
+│   └── text.utils.ts                       # Message chunking & duration formatting
 └── index.ts                                # Composition Root / Dependency Injection
 ```
 
-### Applied Patterns & Standards
-- **nullptr Identity & Persona**: Configured with a default persona and explicit branding across all slash commands, Telegram autocomplete menus, status reports, and logs.
-- **Centralized Configuration Guard**: `process.env` is never accessed directly by application code. All environment access goes through `@/config` via `env`, `getConfig(key)`, or dedicated typed getters (`getConfigTelegramToken()`, `getConfigOllamaHost()`, etc.).
-- **Clean Path Aliases (`@/*`)**: All imports use absolute path aliases (e.g. `import { ILogger } from "@/core/logger/logger.interface"`) without brittle relative navigation (`../../`) or explicit `.js` extensions.
-- **Dependency Inversion / Inversion of Control**: Components rely on interfaces (`ILlmProvider`, `ITelegramClient`, `ISessionStore`, `ILogger`), not concrete implementations.
-- **Command Pattern**: Every slash command (`/models`, `/model`, `/clear`, etc.) is an isolated class implementing `ICommandHandler`.
-- **Repository / Store Abstraction**: `ISessionStore` manages chat history. Swappable with Redis or SQL without touching the service layer.
-- **Provider Pattern**: `ILlmProvider` abstracts inference. Swapping Ollama for OpenAI, Anthropic, or vLLM requires only adding a new provider class.
+---
+
+## ✨ Features
+
+- **Media Downloader (`yt-dlp`)**:
+  - Download from YouTube, Twitter/X, Instagram, TikTok, Soundcloud, Reddit, and 1000+ sites.
+  - **Direct Link Detection**: Simply paste a link into chat to open an interactive format selector.
+  - **Interactive Inline Buttons**: Choose MP3 (320k), M4A, Best MP4, 720p, or 480p with a single tap.
+  - **Telegram 50MB Guard**: Detects files exceeding Telegram's 50MB Bot API upload limit and guides the user.
+  - **Pre-Bundled Multi-Platform Binaries**: Pre-bundled official standalone executables for both `yt-dlp` and `ffmpeg` across Windows (`bin/win32/`), Linux (`bin/linux/`), and macOS (`bin/darwin/`) with zero runtime downloading.
+- **AI Streaming with Ollama (Oracle Cloud)**:
+  - Real-time token streaming with debounced edits (1200ms) to prevent Telegram 429 rate limits.
+  - Continuous "typing..." heartbeat while the model processes complex prompts.
+  - Rich Markdown rendering with automatic plain-text fallback on parse errors.
+  - Context memory window with automatic reset on model switch.
+- **Slash Command Autocomplete**:
+  - Automatically configures Telegram's `/` autocomplete popup and native Menu button via `setMyCommands`.
+- **Security & Centralized Config**:
+  - Authorization guard restricting bot usage to authorized Telegram IDs.
+  - Zero direct `process.env` calls outside `src/config/index.ts`.
 
 ---
 
@@ -61,12 +79,13 @@ src/
 
 | Command | Description |
 |---|---|
-| `/start` | Start nullptr (NullPointer Bot) & show info |
-| `/help` | Show available nullptr commands |
-| `/models` | List installed Ollama models for nullptr |
+| `/start` | Welcome overview & bot status |
+| `/help` | Detailed command reference & guide |
+| `/download <url> [format]` | Download video (MP4/720p/480p) or audio (MP3/M4A) |
+| `/models` | List installed Ollama models on Oracle Cloud |
 | `/model <name>` | Switch active model for nullptr (e.g. `/model qwen2.5-coder`) |
 | `/clear` | Clear nullptr conversation context & memory |
-| `/status` | Check nullptr & Oracle Cloud connectivity |
+| `/status` | Test Oracle Cloud Ollama latency & server health |
 
 ---
 
@@ -84,7 +103,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 ALLOWED_USER_ID=your_numeric_telegram_id
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
-SYSTEM_PROMPT="You are NullPtr, an expert AI assistant."
+SYSTEM_PROMPT="You are nullptr (NullPointer Bot), an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."
 LOG_LEVEL=info
 ```
 

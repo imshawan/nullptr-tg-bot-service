@@ -8,17 +8,22 @@ import {
   getConfigOllamaAuth,
   getConfigSystemPrompt,
   getConfigMaxHistoryMessages,
+  getConfigYtDlpPath,
+  getConfigFfmpegPath,
+  getConfigDownloadTempDir,
 } from "@/config";
 import { ConsoleLogger } from "@/core/logger/console-logger";
 import { TelegramClient } from "@/domain/telegram/telegram.client";
 import { OllamaProvider } from "@/domain/llm/ollama.provider";
 import { InMemorySessionStore } from "@/domain/session/in-memory-session.store";
+import { YtDlpDownloader } from "@/domain/downloader/ytdlp.downloader";
 import { CommandRegistry } from "@/services/command.registry";
 import { BotService } from "@/services/bot.service";
 
 // Import Commands
 import { StartCommand } from "@/services/commands/start.command";
 import { HelpCommand } from "@/services/commands/help.command";
+import { DownloadCommand } from "@/services/commands/download.command";
 import { ModelsCommand } from "@/services/commands/models.command";
 import { ModelCommand } from "@/services/commands/model.command";
 import { ClearCommand } from "@/services/commands/clear.command";
@@ -48,10 +53,18 @@ async function bootstrap(): Promise<void> {
 
   const sessionStore = new InMemorySessionStore(getConfigMaxHistoryMessages());
 
+  const downloader = new YtDlpDownloader({
+    customYtDlpPath: getConfigYtDlpPath(),
+    customFfmpegPath: getConfigFfmpegPath(),
+    tempDir: getConfigDownloadTempDir(),
+    logger,
+  });
+
   // 3. Command Registry setup (Command Pattern)
   const commandRegistry = new CommandRegistry(logger);
   commandRegistry.register(new StartCommand());
   commandRegistry.register(new HelpCommand());
+  commandRegistry.register(new DownloadCommand());
   commandRegistry.register(new ModelsCommand());
   commandRegistry.register(new ModelCommand());
   commandRegistry.register(new ClearCommand());
@@ -66,6 +79,7 @@ async function bootstrap(): Promise<void> {
     telegramClient,
     llmProvider,
     sessionStore,
+    downloader,
     commandRegistry,
     logger
   );

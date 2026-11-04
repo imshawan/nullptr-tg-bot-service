@@ -16,18 +16,38 @@ export interface TelegramChat {
   last_name?: string;
 }
 
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}
+
+export interface InlineKeyboardMarkup {
+  inline_keyboard: InlineKeyboardButton[][];
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
   chat: TelegramChat;
   date: number;
   text?: string;
+  reply_markup?: InlineKeyboardMarkup;
+}
+
+export interface TelegramCallbackQuery {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  inline_message_id?: string;
+  data?: string;
 }
 
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 }
 
 export interface TelegramApiResponse<T = unknown> {
@@ -62,6 +82,7 @@ export interface SendMessageOptions {
   text: string;
   parse_mode?: "Markdown" | "MarkdownV2" | "HTML";
   reply_to_message_id?: number;
+  reply_markup?: InlineKeyboardMarkup;
 }
 
 export interface EditMessageTextOptions {
@@ -69,4 +90,43 @@ export interface EditMessageTextOptions {
   message_id: number;
   text: string;
   parse_mode?: "Markdown" | "MarkdownV2" | "HTML";
+  reply_markup?: InlineKeyboardMarkup;
+}
+
+export interface SendAudioOptions {
+  chat_id: number | string;
+  filePath: string;
+  caption?: string;
+  title?: string;
+  performer?: string;
+  duration?: number;
+  parse_mode?: "Markdown" | "MarkdownV2" | "HTML";
+  reply_to_message_id?: number;
+}
+
+export interface SendVideoOptions {
+  chat_id: number | string;
+  filePath: string;
+  caption?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  supports_streaming?: boolean;
+  parse_mode?: "Markdown" | "MarkdownV2" | "HTML";
+  reply_to_message_id?: number;
+}
+
+export interface SendDocumentOptions {
+  chat_id: number | string;
+  filePath: string;
+  caption?: string;
+  parse_mode?: "Markdown" | "MarkdownV2" | "HTML";
+  reply_to_message_id?: number;
+}
+
+export interface AnswerCallbackQueryOptions {
+  callback_query_id: string;
+  text?: string;
+  show_alert?: boolean;
+  url?: string;
 }

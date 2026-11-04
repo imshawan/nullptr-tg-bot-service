@@ -1,11 +1,15 @@
+import fs from "node:fs/promises";
 import { ITelegramClient } from "@/domain/telegram/telegram-client.interface";
 import { ILlmProvider, ChatMessage } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
+import { IDownloaderService } from "@/domain/downloader/downloader.interface";
+import { MediaFormat, MediaQuality } from "@/domain/downloader/downloader.types";
 import { CommandRegistry } from "@/services/command.registry";
 import { ILogger } from "@/core/logger/logger.interface";
-import { TelegramUpdate } from "@/domain/telegram/telegram.types";
-import { splitMessageText } from "@/utils/text.utils";
+import { TelegramUpdate, TelegramCallbackQuery, InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
+import { splitMessageText, formatDuration } from "@/utils/text.utils";
 import { TelegramApiError } from "@/core/errors/app-error";
+import { pendingDownloadUrls } from "@/services/commands/download.command";
 
 export interface BotServiceConfig {
   allowedUserIds: Set<number>;
@@ -22,6 +26,7 @@ export class BotService {
     private readonly telegram: ITelegramClient,
     private readonly llm: ILlmProvider,
     private readonly sessionStore: ISessionStore,
+    private readonly downloader: IDownloaderService,
     private readonly commandRegistry: CommandRegistry,
     logger: ILogger
   ) {
@@ -29,7 +34,7 @@ export class BotService {
   }
 
   /**
-   * Initializes nullptr bot, registers Telegram slash commands, and verifies LLM connection.
+   * Initializes nullptr bot, registers Telegram slash commands, and verifies LLM & Downloader readiness.
    */
   public async init(): Promise<void> {
     this.logger.info("Initializing nullptr (NullPointer Bot) Service...");
@@ -91,9 +96,15 @@ export class BotService {
   }
 
   /**
-   * Processes a single Telegram update
+   * Processes an incoming update (Message or Inline Callback Query)
    */
   private async processUpdate(update: TelegramUpdate): Promise<void> {
+    // 1. Handle Inline Keyboard Callback Queries (e.g. Media format buttons)
+    if (update.callback_query) {
+      await this.handleCallbackQuery(update.callback_query);
+      return;
+    }
+
     const msg = update.message;
     if (!msg || !msg.text) return;
 
@@ -112,7 +123,7 @@ export class BotService {
 
     const text = msg.text.trim();
 
-    // Command Dispatch
+    // 2. Command Dispatch (/start, /help, /download, /models, etc.)
     if (text.startsWith("/")) {
       const handled = await this.commandRegistry.dispatch(text, {
         chatId,
@@ -120,12 +131,20 @@ export class BotService {
         telegram: this.telegram,
         llm: this.llm,
         sessionStore: this.sessionStore,
+        downloader: this.downloader,
         logger: this.logger,
       });
       if (handled) return;
     }
 
-    // Regular Chat Flow -> LLM
+    // 3. Direct Link Detection (e.g. user pasted YouTube, Twitter/X, TikTok link directly)
+    const detectedUrl = this.downloader.extractUrl(text);
+    if (detectedUrl && this.downloader.isSupportedUrl(detectedUrl) && !text.includes(" ")) {
+      await this.handleDirectUrlSubmission(chatId, detectedUrl);
+      return;
+    }
+
+    // 4. Regular Chat Flow -> LLM Inference
     await this.sessionStore.appendMessage(chatId, { role: "user", content: text });
     const history = await this.sessionStore.getHistory(chatId);
 
@@ -138,6 +157,179 @@ export class BotService {
       await this.telegram.sendMessage({
         chat_id: chatId,
         text: `⚠️ [nullptr] Error communicating with LLM at ${this.llm.getHost()}:\n${errMsg}`,
+      });
+    }
+  }
+
+  /**
+   * Shows format picker when user simply pastes a video/audio link into chat
+   */
+  private async handleDirectUrlSubmission(chatId: number, url: string): Promise<void> {
+    const initMsg = await this.telegram.sendMessage({
+      chat_id: chatId,
+      text: "🔍 *nullptr* detected media link. Fetching details...",
+      parse_mode: "Markdown",
+    });
+
+    try {
+      const info = await this.downloader.getMediaInfo(url);
+      const token = Math.random().toString(36).substring(2, 10);
+      pendingDownloadUrls.set(token, { url, title: info.title, createdAt: Date.now() });
+
+      const durationStr = info.duration ? ` · ⏱️ ${formatDuration(info.duration)}` : "";
+      const uploaderStr = info.uploader ? ` · 👤 ${info.uploader}` : "";
+
+      const text = [
+        `🎬 *${info.title}*`,
+        `${durationStr}${uploaderStr}`,
+        "",
+        "Choose your desired download format:",
+      ].join("\n");
+
+      const keyboard: InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [
+            { text: "🎵 Audio (MP3 320k)", callback_data: `dl:mp3:audio:${token}` },
+            { text: "🎵 Audio (M4A)", callback_data: `dl:m4a:audio:${token}` },
+          ],
+          [
+            { text: "🎬 Video (Best MP4)", callback_data: `dl:mp4:best:${token}` },
+            { text: "🎬 Video (720p)", callback_data: `dl:mp4:720p:${token}` },
+          ],
+          [
+            { text: "🎬 Video (480p)", callback_data: `dl:mp4:480p:${token}` },
+            { text: "❌ Cancel", callback_data: `dl:cancel:none:${token}` },
+          ],
+        ],
+      };
+
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: initMsg.message_id,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: initMsg.message_id,
+        text: `⚠️ [nullptr] Could not inspect media link:\n${errMsg}`,
+      });
+    }
+  }
+
+  /**
+   * Handles user tapping an Inline Keyboard button (e.g. format choice)
+   */
+  private async handleCallbackQuery(query: TelegramCallbackQuery): Promise<void> {
+    const data = query.data;
+    if (!data || !data.startsWith("dl:")) return;
+
+    await this.telegram.answerCallbackQuery({
+      callback_query_id: query.id,
+      text: "nullptr is processing your request...",
+    });
+
+    const [_, format, quality, token] = data.split(":");
+    const chatId = query.message?.chat.id;
+    const messageId = query.message?.message_id;
+
+    if (!chatId || !messageId) return;
+
+    if (format === "cancel") {
+      pendingDownloadUrls.delete(token);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: "❌ Download cancelled.",
+      });
+      return;
+    }
+
+    const pending = pendingDownloadUrls.get(token);
+    if (!pending) {
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: "⚠️ Download session expired. Please send the link again.",
+      });
+      return;
+    }
+
+    // Update status message
+    await this.telegram.editMessageText({
+      chat_id: chatId,
+      message_id: messageId,
+      text: `⏳ *nullptr* is downloading: *${pending.title}* (${format.toUpperCase()})...\nPlease wait.`,
+      parse_mode: "Markdown",
+    });
+
+    try {
+      const result = await this.downloader.download({
+        url: pending.url,
+        format: format as MediaFormat,
+        quality: quality as MediaQuality,
+      });
+
+      const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
+
+      if (result.fileSizeBytes > 50 * 1024 * 1024) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution like 480p!`,
+          parse_mode: "Markdown",
+        });
+        await fs.unlink(result.filePath).catch(() => {});
+        pendingDownloadUrls.delete(token);
+        return;
+      }
+
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: `📤 Uploading to Telegram (*${sizeMb} MB*)...`,
+        parse_mode: "Markdown",
+      });
+
+      if (result.isAudio) {
+        await this.telegram.sendChatAction(chatId, "upload_voice");
+        await this.telegram.sendAudio({
+          chat_id: chatId,
+          filePath: result.filePath,
+          title: result.title,
+          caption: `🎵 *${result.title}* via nullptr`,
+          parse_mode: "Markdown",
+        });
+      } else {
+        await this.telegram.sendChatAction(chatId, "upload_video");
+        await this.telegram.sendVideo({
+          chat_id: chatId,
+          filePath: result.filePath,
+          caption: `🎬 *${result.title}* via nullptr`,
+          parse_mode: "Markdown",
+          supports_streaming: true,
+        });
+      }
+
+      await fs.unlink(result.filePath).catch(() => {});
+      pendingDownloadUrls.delete(token);
+
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: `✅ *${result.title}* downloaded and sent successfully!`,
+        parse_mode: "Markdown",
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error("Download failed:", err);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: `⚠️ [nullptr] Download failed:\n${errMsg}`,
       });
     }
   }
