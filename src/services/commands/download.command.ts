@@ -149,6 +149,45 @@ export class DownloadCommand implements ICommandHandler {
 
       const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
       if (result.fileSizeBytes > 50 * 1024 * 1024) {
+        if (ctx.fileServer && ctx.fileServer.isReady()) {
+          const downloadUrl = await ctx.fileServer.registerDownload(
+            result.filePath,
+            result.filename,
+            result.title
+          );
+
+          const text = [
+            `🎬 *${result.title}*`,
+            `📦 File Size: *${sizeMb} MB*`,
+            "",
+            `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
+            `🚀 *Direct high-speed download link (No Size Limit):*`,
+            `🔗 [Click Here to Download](${downloadUrl})`,
+            "",
+            `⏱️ _This link will remain active for 2 hours._`,
+          ].join("\n");
+
+          const keyboard: InlineKeyboardMarkup = {
+            inline_keyboard: [
+              [
+                {
+                  text: `📥 Download (${sizeMb} MB)`,
+                  url: downloadUrl,
+                },
+              ],
+            ],
+          };
+
+          await ctx.telegram.editMessageText({
+            chat_id: ctx.chatId,
+            message_id: progressMsg.message_id,
+            text,
+            parse_mode: "Markdown",
+            reply_markup: keyboard,
+          });
+          return;
+        }
+
         await ctx.telegram.editMessageText({
           chat_id: ctx.chatId,
           message_id: progressMsg.message_id,

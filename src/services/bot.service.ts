@@ -4,6 +4,7 @@ import { ILlmProvider, ChatMessage } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
 import { IDownloaderService } from "@/domain/downloader/downloader.interface";
 import { MediaFormat, MediaQuality } from "@/domain/downloader/downloader.types";
+import { IFileServerService } from "@/services/file-server/file-server.interface";
 import { CommandRegistry } from "@/services/command.registry";
 import { ILogger } from "@/core/logger/logger.interface";
 import { TelegramUpdate, TelegramCallbackQuery, InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
@@ -28,6 +29,7 @@ export class BotService {
     private readonly sessionStore: ISessionStore,
     private readonly downloader: IDownloaderService,
     private readonly commandRegistry: CommandRegistry,
+    private readonly fileServer: IFileServerService,
     logger: ILogger
   ) {
     this.logger = logger.child("BotService");
@@ -132,6 +134,7 @@ export class BotService {
         llm: this.llm,
         sessionStore: this.sessionStore,
         downloader: this.downloader,
+        fileServer: this.fileServer,
         logger: this.logger,
       });
       if (handled) return;
@@ -276,6 +279,46 @@ export class BotService {
       const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
 
       if (result.fileSizeBytes > 50 * 1024 * 1024) {
+        if (this.fileServer && this.fileServer.isReady()) {
+          const downloadUrl = await this.fileServer.registerDownload(
+            result.filePath,
+            result.filename,
+            result.title
+          );
+
+          const text = [
+            `🎬 *${result.title}*`,
+            `📦 File Size: *${sizeMb} MB*`,
+            "",
+            `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
+            `🚀 *Direct high-speed download link (No Size Limit):*`,
+            `🔗 [Click Here to Download](${downloadUrl})`,
+            "",
+            `⏱️ _This link will remain active for 2 hours._`,
+          ].join("\n");
+
+          const keyboard: InlineKeyboardMarkup = {
+            inline_keyboard: [
+              [
+                {
+                  text: `📥 Download (${sizeMb} MB)`,
+                  url: downloadUrl,
+                },
+              ],
+            ],
+          };
+
+          await this.telegram.editMessageText({
+            chat_id: chatId,
+            message_id: messageId,
+            text,
+            parse_mode: "Markdown",
+            reply_markup: keyboard,
+          });
+          pendingDownloadUrls.delete(token);
+          return;
+        }
+
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: messageId,

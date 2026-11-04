@@ -12,12 +12,16 @@ import {
   getConfigFfmpegPath,
   getConfigYtDlpProxy,
   getConfigDownloadTempDir,
+  getConfigPort,
+  getConfigFileServerBaseUrl,
+  getConfigDownloadLinkTtlMinutes,
 } from "@/config";
 import { ConsoleLogger } from "@/core/logger/console-logger";
 import { TelegramClient } from "@/domain/telegram/telegram.client";
 import { OllamaProvider } from "@/domain/llm/ollama.provider";
 import { InMemorySessionStore } from "@/domain/session/in-memory-session.store";
 import { YtDlpDownloader } from "@/domain/downloader/ytdlp.downloader";
+import { FileServerService } from "@/services/file-server/file-server.service";
 import { CommandRegistry } from "@/services/command.registry";
 import { BotService } from "@/services/bot.service";
 
@@ -62,7 +66,16 @@ async function bootstrap(): Promise<void> {
     logger,
   });
 
-  // 3. Command Registry setup (Command Pattern)
+  // 3. Direct HTTP File Server for large media downloads (> 50 MB)
+  const fileServer = new FileServerService({
+    port: getConfigPort(),
+    baseUrl: getConfigFileServerBaseUrl(),
+    defaultTtlMinutes: getConfigDownloadLinkTtlMinutes(),
+    logger,
+  });
+  await fileServer.start();
+
+  // 4. Command Registry setup (Command Pattern)
   const commandRegistry = new CommandRegistry(logger);
   commandRegistry.register(new StartCommand());
   commandRegistry.register(new HelpCommand());
@@ -72,7 +85,7 @@ async function bootstrap(): Promise<void> {
   commandRegistry.register(new ClearCommand());
   commandRegistry.register(new StatusCommand());
 
-  // 4. Bot Service orchestrator
+  // 5. Bot Service orchestrator
   const botService = new BotService(
     {
       allowedUserIds,
@@ -83,13 +96,15 @@ async function bootstrap(): Promise<void> {
     sessionStore,
     downloader,
     commandRegistry,
+    fileServer,
     logger
   );
 
-  // 5. Graceful shutdown handler
+  // 6. Graceful shutdown handler
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}. Gracefully stopping nullptr (NullPointer Bot)...`);
     botService.stop();
+    await fileServer.stop();
     // Allow pending requests to complete cleanly
     setTimeout(() => {
       logger.info("nullptr process exited.");

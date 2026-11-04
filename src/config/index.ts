@@ -50,6 +50,10 @@ const envSchema = z.object({
   YTDLP_PROXY: z.string().optional(),
   DOWNLOAD_TEMP_DIR: z.string().optional(),
   MAX_DOWNLOAD_SIZE_MB: z.string().default("50").transform((val) => parseInt(val, 10)),
+
+  // File Server configuration (for direct downloads > 50 MB)
+  FILE_SERVER_BASE_URL: z.string().optional(),
+  DOWNLOAD_LINK_TTL_MINUTES: z.string().default("120").transform((val) => parseInt(val, 10)),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -123,3 +127,6 @@ export const getConfigFfmpegPath = (): string | undefined => env.FFMPEG_PATH;
 export const getConfigYtDlpProxy = (): string | undefined => env.YTDLP_PROXY;
 export const getConfigDownloadTempDir = (): string | undefined => env.DOWNLOAD_TEMP_DIR;
 export const getConfigMaxDownloadSizeMb = (): number => env.MAX_DOWNLOAD_SIZE_MB;
+
+export const getConfigFileServerBaseUrl = (): string | undefined => env.FILE_SERVER_BASE_URL;
+export const getConfigDownloadLinkTtlMinutes = (): number => env.DOWNLOAD_LINK_TTL_MINUTES;
