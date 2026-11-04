@@ -64,9 +64,13 @@ src/domain/downloader/
 6. **Cookie-Less Datacenter & Cloud IP Bot Challenge Bypass (Oracle Cloud / VPS)**:
    - YouTube blocks standard desktop web scrapers from cloud datacenter CIDRs (Oracle Cloud, AWS, GCP, etc.) with `"Sign in to confirm you’re not a bot"`.
    - **Why Tubesnag Worked**: `tubesnag-desktop` runs as an Electron desktop app on the user's local residential machine, so requests originate from consumer home ISP IP addresses that Google does not challenge.
-   - **Node.js JavaScript Challenge Solver**: Injects `--js-runtimes node`, enabling `yt-dlp` to execute YouTube's n-challenge and signature deciphering using the server's existing Node.js engine.
-   - **InnerTube `visionos,android` Client Emulation**: By routing through Apple Vision Pro (`visionos`) and Android (`android`) InnerTube endpoints via `--extractor-args "youtube:player_client=visionos,android"`, requests completely bypass desktop BotGuard challenges and Proof-of-Origin (PO) token walls without cookies.
-   - **Full Format Access**: Returns all resolutions (1080p, 720p, 480p, 360p) and audio streams (Opus/AAC).
+   - **Force IPv4 (`--force-ipv4`)**: Prevents yt-dlp from utilizing datacenter IPv6 subnets, which YouTube blocks uniformly across cloud providers.
+   - **Node.js JavaScript Challenge Solver**: Directly points to the host's active Node.js executable via `--js-runtimes "node:${process.execPath}"` and enriches `PATH` in `spawn()`, ensuring yt-dlp can always execute YouTube's n-challenge and signature deciphering even under restrictive systemd or NVM environments.
+   - **Multi-Tier Client Strategy Fallback**:
+     1. `web_embedded,tv,visionos,android,web`: Utilizes YouTube's embedded player endpoints (which do not require PO tokens) along with TV and Vision Pro clients.
+     2. `mweb,web_embedded,tv_embedded`: Mobile web and embedded TV fallback if primary strategy is challenged.
+     3. `default,web_embedded`: Dynamic fallback sequence.
+   - **Tubesnag-Style Error Mapping**: Friendly, human-readable error explanations for bot challenges, private videos, age restrictions, and missing formats.
    - **Proxy Support**: Supports `YTDLP_PROXY` in `.env` if an outbound residential/SOCKS5 proxy is configured.
 
 ---

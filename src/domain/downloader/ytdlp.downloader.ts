@@ -25,6 +25,18 @@ const QUALITY_MAP: Record<MediaQuality, string> = {
   audio: "bestaudio/best",
 };
 
+/**
+ * YouTube player client strategies in order of bypass reliability on datacenter/VPS networks without cookies.
+ * 1. web_embedded: External embed player, bypasses GVS PO Token requirements on most videos.
+ * 2. mweb: Mobile web client with tv_embedded fallback.
+ * 3. default: Built-in dynamic fallback sequence.
+ */
+const PLAYER_CLIENT_STRATEGIES = [
+  "web_embedded,tv,visionos,android,web",
+  "mweb,web_embedded,tv_embedded",
+  "default,web_embedded",
+];
+
 export class YtDlpDownloader implements IDownloaderService {
   private ytdlpBinaryPath: string | null = null;
   private ffmpegBinaryPath: string | null = null;
@@ -208,18 +220,40 @@ export class YtDlpDownloader implements IDownloaderService {
     return match ? match[0] : null;
   }
 
-  private buildBaseArgs(): string[] {
+  public isYouTubeUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return (
+        parsed.hostname.includes("youtube.com") ||
+        parsed.hostname.includes("youtu.be")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private getProcessEnv(): NodeJS.ProcessEnv {
+    const nodeDir = path.dirname(process.execPath);
+    const currentPath = process.env.PATH || "";
+    return {
+      ...process.env,
+      PATH: currentPath ? `${nodeDir}${path.delimiter}${currentPath}` : nodeDir,
+    };
+  }
+
+  private buildBaseArgs(playerClients: string = PLAYER_CLIENT_STRATEGIES[0]): string[] {
     const args: string[] = [
       "--no-warnings",
       "--no-playlist",
       "--socket-timeout",
       "30",
-      // Leverage the host's Node.js runtime to execute YouTube's JS challenges
+      // Force IPv4 to prevent datacenter IPv6 subnet blocks from YouTube
+      "--force-ipv4",
+      // Leverage the host's active Node.js runtime to execute YouTube's JS challenges
       "--js-runtimes",
-      "node",
-      // InnerTube visionos and android clients bypass YouTube datacenter bot detection without cookies
+      `node:${process.execPath}`,
       "--extractor-args",
-      "youtube:player_client=visionos,android",
+      `youtube:player_client=${playerClients}`,
     ];
 
     if (this.proxyUrl) {
@@ -229,33 +263,89 @@ export class YtDlpDownloader implements IDownloaderService {
     return args;
   }
 
-  private formatYtDlpError(code: number | null, stderr: string): AppError {
-    const isBotChallenge =
-      stderr.includes("Sign in to confirm you’re not a bot") ||
-      stderr.includes("Sign in to confirm you're not a bot");
+  private isBotChallenge(stderr: string): boolean {
+    const lower = stderr.toLowerCase();
+    return (
+      lower.includes("sign in to confirm you’re not a bot") ||
+      lower.includes("sign in to confirm you're not a bot") ||
+      lower.includes("not a bot")
+    );
+  }
 
-    if (isBotChallenge) {
+  private formatYtDlpError(code: number | null, stderr: string): AppError {
+    const trimmed = stderr.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (this.isBotChallenge(stderr)) {
       return new AppError(
-        "YouTube temporarily challenged this server IP. Please try again in a few moments."
+        "YouTube challenged anonymous access from this server IP. Please try again in a few moments, or configure YTDLP_PROXY in .env to route requests through a residential proxy."
       );
     }
 
+    if (lower.includes("requested format is not available")) {
+      return new AppError("The requested format or quality is not available for this media.");
+    }
+    if (lower.includes("video unavailable")) {
+      return new AppError("This video is unavailable or has been removed.");
+    }
+    if (lower.includes("private video")) {
+      return new AppError("This video is private and cannot be downloaded.");
+    }
+    if (lower.includes("age-restricted")) {
+      return new AppError("This video is age-restricted and requires an authenticated session.");
+    }
+    if (lower.includes("http error 403")) {
+      return new AppError("Access forbidden (HTTP 403). The server was blocked from accessing this media stream.");
+    }
+    if (lower.includes("http error 404")) {
+      return new AppError("Media not found (HTTP 404).");
+    }
+    if (lower.includes("connection refused") || lower.includes("unreachable network")) {
+      return new AppError("Network error: Could not reach the media host.");
+    }
+
     const codeStr = code !== null ? String(code) : "unknown";
-    return new AppError(`yt-dlp error (${codeStr}): ${stderr.trim() || "Failed to process media request"}`);
+    return new AppError(`yt-dlp error (${codeStr}): ${trimmed || "Failed to process media request"}`);
   }
 
   public async getMediaInfo(url: string): Promise<MediaInfo> {
+    const isYt = this.isYouTubeUrl(url);
+    const strategies = isYt ? PLAYER_CLIENT_STRATEGIES : [PLAYER_CLIENT_STRATEGIES[0]];
+
+    let lastError: Error | null = null;
+    for (let i = 0; i < strategies.length; i++) {
+      const strategy = strategies[i];
+      try {
+        return await this.executeGetMediaInfo(url, strategy);
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const isBot = lastError.message.includes("challenged anonymous access");
+        if (isBot && i < strategies.length - 1) {
+          this.logger.warn(
+            `YouTube bot challenge encountered with strategy "${strategy}". Retrying with fallback "${strategies[i + 1]}"...`,
+            { url }
+          );
+          continue;
+        }
+        throw lastError;
+      }
+    }
+
+    throw lastError || new AppError("Failed to inspect media link.");
+  }
+
+  private async executeGetMediaInfo(url: string, clientStrategy: string): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
-        ...this.buildBaseArgs(),
+        ...this.buildBaseArgs(clientStrategy),
         "--dump-single-json",
         "--skip-download",
         url,
       ];
 
-      const proc = spawn(binary, args);
+      const proc = spawn(binary, args, { env: this.getProcessEnv() });
       let stdout = "";
       let stderr = "";
 
@@ -295,7 +385,45 @@ export class YtDlpDownloader implements IDownloaderService {
     });
   }
 
+  private async cleanupPrefix(prefix: string): Promise<void> {
+    try {
+      const files = await fsPromises.readdir(this.tempDir);
+      const matches = files.filter((f) => f.startsWith(prefix));
+      await Promise.all(
+        matches.map((f) => fsPromises.unlink(path.join(this.tempDir, f)).catch(() => {}))
+      );
+    } catch {
+      // Ignore cleanup error
+    }
+  }
+
   public async download(options: DownloadOptions): Promise<DownloadResult> {
+    const isYt = this.isYouTubeUrl(options.url);
+    const strategies = isYt ? PLAYER_CLIENT_STRATEGIES : [PLAYER_CLIENT_STRATEGIES[0]];
+
+    let lastError: Error | null = null;
+    for (let i = 0; i < strategies.length; i++) {
+      const strategy = strategies[i];
+      try {
+        return await this.executeDownload(options, strategy);
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const isBot = lastError.message.includes("challenged anonymous access");
+        if (isBot && i < strategies.length - 1) {
+          this.logger.warn(
+            `YouTube bot challenge encountered during download with strategy "${strategy}". Retrying with fallback "${strategies[i + 1]}"...`,
+            { url: options.url }
+          );
+          continue;
+        }
+        throw lastError;
+      }
+    }
+
+    throw lastError || new AppError("Failed to download media.");
+  }
+
+  private async executeDownload(options: DownloadOptions, clientStrategy: string): Promise<DownloadResult> {
     const binary = await this.ensureBinary();
     const ffmpegBinary = await this.ensureFfmpegBinary();
     const isAudio = AUDIO_FORMATS.includes(options.format);
@@ -303,7 +431,7 @@ export class YtDlpDownloader implements IDownloaderService {
     const outputTemplate = path.join(this.tempDir, `${uniquePrefix}_%(title).100B.%(ext)s`);
 
     const args: string[] = [
-      ...this.buildBaseArgs(),
+      ...this.buildBaseArgs(clientStrategy),
       "-o",
       outputTemplate,
     ];
@@ -338,10 +466,10 @@ export class YtDlpDownloader implements IDownloaderService {
 
     args.push(options.url);
 
-    this.logger.info(`Starting download for: ${options.url} (Format: ${options.format})`);
+    this.logger.info(`Starting download for: ${options.url} (Format: ${options.format}, Strategy: ${clientStrategy})`);
 
     return new Promise((resolve, reject) => {
-      const proc = spawn(binary, args);
+      const proc = spawn(binary, args, { env: this.getProcessEnv() });
       let stderr = "";
 
       proc.stdout.on("data", (chunk: Buffer) => {
@@ -360,6 +488,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
       proc.on("close", async (code) => {
         if (code !== 0) {
+          await this.cleanupPrefix(uniquePrefix);
           return reject(this.formatYtDlpError(code, stderr));
         }
 
