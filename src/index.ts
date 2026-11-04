@@ -10,6 +10,7 @@ import {
   getConfigMaxHistoryMessages,
   getConfigYtDlpPath,
   getConfigFfmpegPath,
+  getConfigYtDlpProxy,
   getConfigDownloadTempDir,
 } from "@/config";
 import { ConsoleLogger } from "@/core/logger/console-logger";
@@ -56,6 +57,7 @@ async function bootstrap(): Promise<void> {
   const downloader = new YtDlpDownloader({
     customYtDlpPath: getConfigYtDlpPath(),
     customFfmpegPath: getConfigFfmpegPath(),
+    customProxy: getConfigYtDlpProxy(),
     tempDir: getConfigDownloadTempDir(),
     logger,
   });

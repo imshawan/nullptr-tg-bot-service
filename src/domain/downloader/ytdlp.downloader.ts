@@ -28,17 +28,20 @@ const QUALITY_MAP: Record<MediaQuality, string> = {
 export class YtDlpDownloader implements IDownloaderService {
   private ytdlpBinaryPath: string | null = null;
   private ffmpegBinaryPath: string | null = null;
+  private readonly proxyUrl?: string;
   private readonly tempDir: string;
   private readonly logger: ILogger;
 
   constructor(options: {
     customYtDlpPath?: string;
     customFfmpegPath?: string;
+    customProxy?: string;
     tempDir?: string;
     logger: ILogger;
   }) {
     this.ytdlpBinaryPath = options.customYtDlpPath || null;
     this.ffmpegBinaryPath = options.customFfmpegPath || null;
+    this.proxyUrl = options.customProxy;
     this.tempDir = options.tempDir || path.join(os.tmpdir(), "nullptr-downloads");
     this.logger = options.logger.child("YtDlpDownloader");
 
@@ -205,14 +208,49 @@ export class YtDlpDownloader implements IDownloaderService {
     return match ? match[0] : null;
   }
 
+  private buildBaseArgs(): string[] {
+    const args: string[] = [
+      "--no-warnings",
+      "--no-playlist",
+      "--socket-timeout",
+      "30",
+      // Leverage the host's Node.js runtime to execute YouTube's JS challenges
+      "--js-runtimes",
+      "node",
+      // InnerTube visionos and android clients bypass YouTube datacenter bot detection without cookies
+      "--extractor-args",
+      "youtube:player_client=visionos,android",
+    ];
+
+    if (this.proxyUrl) {
+      args.push("--proxy", this.proxyUrl);
+    }
+
+    return args;
+  }
+
+  private formatYtDlpError(code: number | null, stderr: string): AppError {
+    const isBotChallenge =
+      stderr.includes("Sign in to confirm you’re not a bot") ||
+      stderr.includes("Sign in to confirm you're not a bot");
+
+    if (isBotChallenge) {
+      return new AppError(
+        "YouTube temporarily challenged this server IP. Please try again in a few moments."
+      );
+    }
+
+    const codeStr = code !== null ? String(code) : "unknown";
+    return new AppError(`yt-dlp error (${codeStr}): ${stderr.trim() || "Failed to process media request"}`);
+  }
+
   public async getMediaInfo(url: string): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
+        ...this.buildBaseArgs(),
         "--dump-single-json",
-        "--no-warnings",
-        "--no-playlist",
         "--skip-download",
         url,
       ];
@@ -231,7 +269,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
       proc.on("close", (code) => {
         if (code !== 0) {
-          return reject(new AppError(`yt-dlp error (${code}): ${stderr || "Failed to fetch media info"}`));
+          return reject(this.formatYtDlpError(code, stderr));
         }
 
         try {
@@ -265,8 +303,7 @@ export class YtDlpDownloader implements IDownloaderService {
     const outputTemplate = path.join(this.tempDir, `${uniquePrefix}_%(title).100B.%(ext)s`);
 
     const args: string[] = [
-      "--no-playlist",
-      "--no-warnings",
+      ...this.buildBaseArgs(),
       "-o",
       outputTemplate,
     ];
@@ -323,7 +360,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
       proc.on("close", async (code) => {
         if (code !== 0) {
-          return reject(new AppError(`Download failed with exit code ${code}: ${stderr.slice(-300)}`));
+          return reject(this.formatYtDlpError(code, stderr));
         }
 
         try {

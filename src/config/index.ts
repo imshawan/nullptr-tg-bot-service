@@ -47,6 +47,7 @@ const envSchema = z.object({
   // Media Downloader (yt-dlp) configuration
   YTDLP_PATH: z.string().optional(),
   FFMPEG_PATH: z.string().optional(),
+  YTDLP_PROXY: z.string().optional(),
   DOWNLOAD_TEMP_DIR: z.string().optional(),
   MAX_DOWNLOAD_SIZE_MB: z.string().default("50").transform((val) => parseInt(val, 10)),
 });
@@ -119,5 +120,6 @@ export const getConfigRedisPort = (): number => env.REDIS_PORT;
 
 export const getConfigYtDlpPath = (): string | undefined => env.YTDLP_PATH;
 export const getConfigFfmpegPath = (): string | undefined => env.FFMPEG_PATH;
+export const getConfigYtDlpProxy = (): string | undefined => env.YTDLP_PROXY;
 export const getConfigDownloadTempDir = (): string | undefined => env.DOWNLOAD_TEMP_DIR;
 export const getConfigMaxDownloadSizeMb = (): number => env.MAX_DOWNLOAD_SIZE_MB;
