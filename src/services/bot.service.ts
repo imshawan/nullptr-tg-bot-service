@@ -291,8 +291,9 @@ export class BotService {
             `📦 File Size: *${sizeMb} MB*`,
             "",
             `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
-            `🚀 *Direct high-speed download link (No Size Limit):*`,
-            `${downloadUrl}`,
+            `🚀 *High-Speed Streaming & Direct Download:*`,
+            `• ▶️ *Stream & Watch:* [Open Web Player](${downloadUrl})`,
+            `• 📥 *Download / Save:* [Direct File Download](${downloadUrl}?dl=1)`,
             "",
             `⏱️ _This link will remain active for 2 hours._`,
           ].join("\n");
@@ -303,11 +304,11 @@ export class BotService {
                 inline_keyboard: [
                   [
                     {
-                      text: `▶️ Stream Video (${sizeMb} MB)`,
+                      text: `▶️ Stream & Watch`,
                       url: downloadUrl,
                     },
                     {
-                      text: `📥 Download File`,
+                      text: `📥 Download (${sizeMb} MB)`,
                       url: `${downloadUrl}?dl=1`,
                     },
                   ],
@@ -333,8 +334,9 @@ export class BotService {
                 `📦 File Size: ${sizeMb} MB`,
                 "",
                 `ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`,
-                `🚀 Direct high-speed download link (No Size Limit):`,
-                `${downloadUrl}`,
+                `🚀 High-Speed Streaming & Direct Download:`,
+                `▶️ Stream & Watch: ${downloadUrl}`,
+                `📥 Direct Download: ${downloadUrl}?dl=1`,
                 "",
                 `⏱️ This link will remain active for 2 hours.`,
               ].join("\n"),

@@ -6,6 +6,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { IFileServerService, DownloadEntry } from "./file-server.interface";
 import { ILogger } from "@/core/logger/logger.interface";
+import { escapeHtml } from "@/utils/text.utils";
 
 const MIME_MAP: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -204,10 +205,251 @@ export class FileServerService implements IFileServerService {
 
     const fileSizeBytes = entry.fileSizeBytes;
     const isDownload = parsedUrl.searchParams.get("dl") === "1" || parsedUrl.searchParams.get("download") === "1";
-    const dispositionType = isDownload ? "attachment" : "inline";
-    const contentDisposition = `${dispositionType}; filename*=UTF-8''${encodeURIComponent(entry.filename)}`;
-
+    const wantsStream = parsedUrl.searchParams.get("stream") === "1";
     const rangeHeader = req.headers.range;
+
+    // Check if the client is a browser navigating directly to the URL wanting an HTML web player page
+    const wantsHtml =
+      !isDownload &&
+      !wantsStream &&
+      !rangeHeader &&
+      Boolean(req.headers.accept?.includes("text/html"));
+
+    if (wantsHtml) {
+      const isAudio = entry.mimeType.startsWith("audio/");
+      const sizeMb = (entry.fileSizeBytes / (1024 * 1024)).toFixed(1);
+      const ext = path.extname(entry.filename).toLowerCase();
+      const expiresInHours = Math.max(1, Math.round((entry.expiresAt - Date.now()) / (60 * 60 * 1000)));
+      const streamUrl = `${pathname}?stream=1`;
+      const directDownloadUrl = `${pathname}?dl=1`;
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(entry.title)} - nullptr</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --text-primary: #f9fafb;
+      --text-secondary: #9ca3af;
+      --accent: #38bdf8;
+      --btn-primary: #2563eb;
+      --btn-primary-hover: #1d4ed8;
+      --btn-secondary: #374151;
+      --btn-secondary-hover: #4b5563;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 820px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(17, 24, 39, 0.8);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .media-box {
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+    }
+    video {
+      width: 100%;
+      max-height: 68vh;
+      display: block;
+      outline: none;
+    }
+    audio {
+      width: 90%;
+      margin: 36px auto;
+      outline: none;
+    }
+    .card-body {
+      padding: 24px;
+    }
+    .title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      word-break: break-word;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: all 0.15s ease-in-out;
+      cursor: pointer;
+    }
+    .btn-download {
+      background: var(--btn-primary);
+      color: #fff;
+      flex: 1;
+      min-width: 220px;
+    }
+    .btn-download:hover {
+      background: var(--btn-primary-hover);
+      transform: translateY(-1px);
+    }
+    .btn-stream {
+      background: var(--btn-secondary);
+      color: #f3f4f6;
+    }
+    .btn-stream:hover {
+      background: var(--btn-secondary-hover);
+    }
+    .footer {
+      margin-top: 18px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <div class="brand">
+        <span>🤖 nullptr</span>
+      </div>
+      <span class="badge">Live Stream &amp; Download</span>
+    </div>
+
+    <div class="media-box">
+      ${isAudio ? `
+        <audio controls autoplay preload="metadata">
+          <source src="${streamUrl}" type="${entry.mimeType}">
+          Your browser does not support audio playback.
+        </audio>
+      ` : `
+        <video controls autoplay playsinline preload="metadata">
+          <source src="${streamUrl}" type="${entry.mimeType}">
+          Your browser does not support video playback.
+        </video>
+      `}
+    </div>
+
+    <div class="card-body">
+      <h1 class="title">${escapeHtml(entry.title)}</h1>
+      <div class="meta-row">
+        <div class="meta-item">📦 ${sizeMb} MB</div>
+        <div class="meta-item">📁 ${escapeHtml(ext.toUpperCase().replace('.', ''))}</div>
+        <div class="meta-item">⏱️ Expires in ${expiresInHours}h</div>
+      </div>
+
+      <div class="actions">
+        <a href="${directDownloadUrl}" class="btn btn-download" download="${escapeHtml(entry.filename)}">
+          📥 Download File (${sizeMb} MB)
+        </a>
+        <a href="${streamUrl}" class="btn btn-stream" target="_blank">
+          ▶️ Direct Stream Link
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by <strong>nullptr (NullPointer Bot)</strong> · Created &amp; Managed by <a href="https://imshawan.dev" target="_blank" rel="noopener">Shawan Mandal</a>
+  </div>
+</body>
+</html>`;
+
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": Buffer.byteLength(html, "utf-8"),
+        "Cache-Control": "no-cache",
+      });
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
+      res.end(html);
+      return;
+    }
+
+    const dispositionType = isDownload ? "attachment" : "inline";
+    const asciiFilename = entry.filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "");
+    const encodedFilename = encodeURIComponent(entry.filename);
+    const contentDisposition = `${dispositionType}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`;
+
+    // Critical for Safari / iOS:
+    // If client requested download (?dl=1), Content-Type MUST be application/octet-stream.
+    // If Content-Type is video/mp4, Safari's WebKit media engine intercepts the request and launches AVPlayer,
+    // completely ignoring Content-Disposition: attachment and preventing the user from saving the file.
+    const responseContentType = isDownload ? "application/octet-stream" : entry.mimeType;
 
     // Support HTTP Range requests (HTTP 206 Partial Content) strictly required by Safari & iOS
     let start = 0;
@@ -259,17 +501,22 @@ export class FileServerService implements IFileServerService {
       }
 
       const chunkSize = end - start + 1;
-      const fileStream = fs.createReadStream(entry.filePath, { start, end });
 
       res.writeHead(206, {
         "Content-Range": `bytes ${start}-${end}/${fileSizeBytes}`,
         "Accept-Ranges": "bytes",
         "Content-Length": chunkSize,
-        "Content-Type": entry.mimeType,
+        "Content-Type": responseContentType,
         "Content-Disposition": contentDisposition,
         "Cache-Control": "public, max-age=3600",
       });
 
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
+
+      const fileStream = fs.createReadStream(entry.filePath, { start, end });
       fileStream.pipe(res);
       fileStream.on("error", (err) => {
         this.logger.warn(`Error streaming partial download: ${String(err)}`);
@@ -279,10 +526,15 @@ export class FileServerService implements IFileServerService {
       res.writeHead(200, {
         "Content-Length": fileSizeBytes,
         "Accept-Ranges": "bytes",
-        "Content-Type": entry.mimeType,
+        "Content-Type": responseContentType,
         "Content-Disposition": contentDisposition,
         "Cache-Control": "public, max-age=3600",
       });
+
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
 
       const fileStream = fs.createReadStream(entry.filePath);
       fileStream.pipe(res);
