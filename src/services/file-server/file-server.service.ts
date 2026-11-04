@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import crypto from "node:crypto";
 import { IFileServerService, DownloadEntry } from "./file-server.interface";
 import { ILogger } from "@/core/logger/logger.interface";
@@ -24,6 +25,7 @@ export class FileServerService implements IFileServerService {
   private configuredBaseUrl?: string;
   private resolvedBaseUrl?: string;
   private readonly defaultTtlMinutes: number;
+  private readonly allowedDir: string;
   private readonly logger: ILogger;
   private server: http.Server | null = null;
   private cleanupTimer: NodeJS.Timeout | null = null;
@@ -33,11 +35,13 @@ export class FileServerService implements IFileServerService {
     port: number;
     baseUrl?: string;
     defaultTtlMinutes?: number;
+    allowedDir?: string;
     logger: ILogger;
   }) {
     this.port = options.port;
     this.configuredBaseUrl = options.baseUrl?.replace(/\/+$/, "");
     this.defaultTtlMinutes = options.defaultTtlMinutes || 120;
+    this.allowedDir = path.resolve(options.allowedDir || path.join(os.tmpdir(), "nullptr-downloads"));
     this.logger = options.logger.child("FileServer");
   }
 
@@ -178,12 +182,26 @@ export class FileServerService implements IFileServerService {
       return;
     }
 
+    // Security check: Path Traversal Jail. File must reside strictly inside the allowed downloads directory.
+    const resolvedPath = path.resolve(entry.filePath);
+    if (!resolvedPath.startsWith(this.allowedDir)) {
+      this.logger.warn(`Security alert: Attempted access outside allowed directory: ${resolvedPath}`);
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("403 Forbidden - Access denied");
+      return;
+    }
+
     if (!fs.existsSync(entry.filePath)) {
       this.entries.delete(token);
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("File no longer exists on server.");
       return;
     }
+
+    // Standard HTTP security headers
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Content-Security-Policy", "default-src 'none'");
 
     const fileSizeBytes = entry.fileSizeBytes;
     const rangeHeader = req.headers.range;

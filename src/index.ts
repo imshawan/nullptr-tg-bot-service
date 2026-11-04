@@ -71,6 +71,7 @@ async function bootstrap(): Promise<void> {
     port: getConfigPort(),
     baseUrl: getConfigFileServerBaseUrl(),
     defaultTtlMinutes: getConfigDownloadLinkTtlMinutes(),
+    allowedDir: getConfigDownloadTempDir(),
     logger,
   });
   await fileServer.start();
