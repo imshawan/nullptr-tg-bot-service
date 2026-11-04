@@ -86,8 +86,12 @@ export const getConfigAllowedUserIds = (): Set<number> => {
 };
 
 export const getConfigOllamaHost = (): string => {
-  const host = env.OLLAMA_BASE_URL || env.OLLAMA_HOST;
-  return host.replace(/\/+$/, "");
+  let host = env.OLLAMA_BASE_URL || env.OLLAMA_HOST;
+  host = host.replace(/\/+$/, "");
+  if (host.endsWith("/v1")) {
+    host = host.slice(0, -3);
+  }
+  return host;
 };
 export const getConfigOllamaModel = (): string => env.OLLAMA_MODEL;
 export const getConfigOllamaAuth = (): string | undefined => env.OLLAMA_AUTH;

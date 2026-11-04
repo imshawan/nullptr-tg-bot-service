@@ -3,7 +3,6 @@ import { ICommandHandler, CommandContext } from "@/services/commands/command.int
 export class StartCommand implements ICommandHandler {
   public readonly command = "start";
   public readonly description = "Start nullptr (NullPointer Bot) & show info";
-  public readonly aliases = ["help"];
 
   public async execute(ctx: CommandContext): Promise<void> {
     const host = ctx.llm.getHost();

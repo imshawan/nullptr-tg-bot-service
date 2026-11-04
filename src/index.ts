@@ -18,6 +18,7 @@ import { BotService } from "@/services/bot.service";
 
 // Import Commands
 import { StartCommand } from "@/services/commands/start.command";
+import { HelpCommand } from "@/services/commands/help.command";
 import { ModelsCommand } from "@/services/commands/models.command";
 import { ModelCommand } from "@/services/commands/model.command";
 import { ClearCommand } from "@/services/commands/clear.command";
@@ -50,6 +51,7 @@ async function bootstrap(): Promise<void> {
   // 3. Command Registry setup (Command Pattern)
   const commandRegistry = new CommandRegistry(logger);
   commandRegistry.register(new StartCommand());
+  commandRegistry.register(new HelpCommand());
   commandRegistry.register(new ModelsCommand());
   commandRegistry.register(new ModelCommand());
   commandRegistry.register(new ClearCommand());

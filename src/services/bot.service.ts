@@ -143,11 +143,63 @@ export class BotService {
   }
 
   /**
-   * Streams LLM response to Telegram with throttled editing and rate-limit backoff
+   * Delivers message text with Markdown formatting and automatic plain-text fallback.
+   */
+  private async deliverMessage(
+    chatId: number,
+    text: string,
+    existingMessageId?: number
+  ): Promise<void> {
+    if (existingMessageId) {
+      try {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: existingMessageId,
+          text,
+          parse_mode: "Markdown",
+        });
+        return;
+      } catch {
+        // Fallback to unformatted plain text if Telegram fails entity parsing
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: existingMessageId,
+          text,
+        });
+        return;
+      }
+    }
+
+    try {
+      await this.telegram.sendMessage({
+        chat_id: chatId,
+        text,
+        parse_mode: "Markdown",
+      });
+    } catch {
+      await this.telegram.sendMessage({
+        chat_id: chatId,
+        text,
+      });
+    }
+  }
+
+  /**
+   * Streams LLM response to Telegram with throttled editing, typing heartbeat, and rate-limit backoff
    */
   private async streamLlmReply(chatId: number, messages: ChatMessage[]): Promise<string> {
     // Show typing status in chat header
     await this.telegram.sendChatAction(chatId, "typing");
+
+    // Recurring typing indicator heartbeat while waiting for the first tokens
+    let isStreaming = false;
+    const typingTimer = setInterval(() => {
+      if (!isStreaming) {
+        this.telegram.sendChatAction(chatId, "typing").catch(() => {});
+      } else {
+        clearInterval(typingTimer);
+      }
+    }, 4500);
 
     // Placeholder message
     const placeholderMsg = await this.telegram.sendMessage({
@@ -166,6 +218,7 @@ export class BotService {
 
     try {
       for await (const chunk of this.llm.chatStream(messages, abortController.signal)) {
+        isStreaming = true;
         fullContent += chunk.content;
 
         const now = Date.now();
@@ -196,41 +249,26 @@ export class BotService {
 
       const finalReply = fullContent.trim() || "(Empty response received from nullptr)";
 
-      // Deliver final output
+      // Deliver final output (with rich markdown + fallback)
       if (placeholderMsgId && finalReply.length <= 4000) {
-        if (finalReply !== lastEditedText) {
-          await this.telegram.editMessageText({
-            chat_id: chatId,
-            message_id: placeholderMsgId,
-            text: finalReply,
-          });
-        }
+        await this.deliverMessage(chatId, finalReply, placeholderMsgId);
       } else {
         const chunks = splitMessageText(finalReply, 4000);
         if (placeholderMsgId) {
-          await this.telegram.editMessageText({
-            chat_id: chatId,
-            message_id: placeholderMsgId,
-            text: chunks[0],
-          });
+          await this.deliverMessage(chatId, chunks[0], placeholderMsgId);
           for (let i = 1; i < chunks.length; i++) {
-            await this.telegram.sendMessage({
-              chat_id: chatId,
-              text: chunks[i],
-            });
+            await this.deliverMessage(chatId, chunks[i]);
           }
         } else {
           for (const chunk of chunks) {
-            await this.telegram.sendMessage({
-              chat_id: chatId,
-              text: chunk,
-            });
+            await this.deliverMessage(chatId, chunk);
           }
         }
       }
 
       return finalReply;
     } finally {
+      clearInterval(typingTimer);
       clearTimeout(timeout);
     }
   }

@@ -27,6 +27,7 @@ interface OllamaChatChunkResponse {
     content: string;
   };
   done?: boolean;
+  error?: string;
 }
 
 export class OllamaProvider implements ILlmProvider {
@@ -152,13 +153,17 @@ export class OllamaProvider implements ILlmProvider {
 
         try {
           const parsed = JSON.parse(trimmed) as OllamaChatChunkResponse;
+          if (parsed.error) {
+            throw new LlmProviderError(`Ollama streaming error: ${parsed.error}`, "Ollama");
+          }
           if (parsed.message?.content) {
             yield {
               content: parsed.message.content,
               done: parsed.done ?? false,
             };
           }
-        } catch {
+        } catch (err: unknown) {
+          if (err instanceof LlmProviderError) throw err;
           // Ignore incomplete json splits
         }
       }
