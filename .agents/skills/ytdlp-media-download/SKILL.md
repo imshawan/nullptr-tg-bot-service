@@ -64,12 +64,11 @@ src/domain/downloader/
 6. **Cookie-Less Datacenter & Cloud IP Bot Challenge Bypass (Oracle Cloud / VPS)**:
    - YouTube blocks standard desktop web scrapers from cloud datacenter CIDRs (Oracle Cloud, AWS, GCP, etc.) with `"Sign in to confirm you’re not a bot"`.
    - **Why Tubesnag Worked**: `tubesnag-desktop` runs as an Electron desktop app on the user's local residential machine, so requests originate from consumer home ISP IP addresses that Google does not challenge.
+   - **YouTube oEmbed Metadata Inspection Fallback**: Link inspection automatically falls back to YouTube's public open oEmbed endpoint (`https://www.youtube.com/oembed`), which has no BotGuard or cookie requirements. Video inspection and format selection buttons never fail even on flagged cloud IPs.
    - **Force IPv4 (`--force-ipv4`)**: Prevents yt-dlp from utilizing datacenter IPv6 subnets, which YouTube blocks uniformly across cloud providers.
    - **Node.js JavaScript Challenge Solver**: Directly points to the host's active Node.js executable via `--js-runtimes "node:${process.execPath}"` and enriches `PATH` in `spawn()`, ensuring yt-dlp can always execute YouTube's n-challenge and signature deciphering even under restrictive systemd or NVM environments.
-   - **Multi-Tier Client Strategy Fallback**:
-     1. `web_embedded,tv,visionos,android,web`: Utilizes YouTube's embedded player endpoints (which do not require PO tokens) along with TV and Vision Pro clients.
-     2. `mweb,web_embedded,tv_embedded`: Mobile web and embedded TV fallback if primary strategy is challenged.
-     3. `default,web_embedded`: Dynamic fallback sequence.
+   - **Multi-Tier Client Strategy**: Prioritizes `web_embedded` and `tv` clients that avoid GVS PO Token constraints.
+   - **Federated Proxy Stream Fallback**: When direct `yt-dlp` downloading encounters BotGuard on flagged cloud IPs without cookies, nullptr automatically routes to high-availability federated stream instances and downloads/remuxes directly via pre-bundled `ffmpeg`.
    - **Tubesnag-Style Error Mapping**: Friendly, human-readable error explanations for bot challenges, private videos, age restrictions, and missing formats.
    - **Proxy Support**: Supports `YTDLP_PROXY` in `.env` if an outbound residential/SOCKS5 proxy is configured.
 

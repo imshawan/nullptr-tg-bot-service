@@ -3,6 +3,8 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { IDownloaderService } from "@/domain/downloader/downloader.interface";
 import {
   MediaInfo,
@@ -27,14 +29,22 @@ const QUALITY_MAP: Record<MediaQuality, string> = {
 
 /**
  * YouTube player client strategies in order of bypass reliability on datacenter/VPS networks without cookies.
- * 1. web_embedded: External embed player, bypasses GVS PO Token requirements on most videos.
- * 2. mweb: Mobile web client with tv_embedded fallback.
- * 3. default: Built-in dynamic fallback sequence.
  */
 const PLAYER_CLIENT_STRATEGIES = [
   "web_embedded,tv,visionos,android,web",
   "mweb,web_embedded,tv_embedded",
   "default,web_embedded",
+];
+
+/**
+ * High-availability federated Piped/Invidious stream proxy instances used as an automated fallback
+ * when YouTube BotGuard blocks direct VPS IP access without cookies.
+ */
+const FEDERATED_STREAM_INSTANCES = [
+  "https://api.piped.private.coffee",
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.leptons.xyz",
 ];
 
 export class YtDlpDownloader implements IDownloaderService {
@@ -308,30 +318,57 @@ export class YtDlpDownloader implements IDownloaderService {
     return new AppError(`yt-dlp error (${codeStr}): ${trimmed || "Failed to process media request"}`);
   }
 
+  public extractYouTubeId(url: string): string | null {
+    const match = url.match(
+      /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i
+    );
+    return match ? match[1] : null;
+  }
+
+  private async getOembedInfo(url: string): Promise<MediaInfo> {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembedUrl);
+    if (!res.ok) {
+      throw new AppError(`Could not fetch YouTube video details (HTTP ${res.status})`);
+    }
+    const data = (await res.json()) as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    const id = this.extractYouTubeId(url) || String(Date.now());
+    return {
+      id,
+      title: data.title || "YouTube Video",
+      uploader: data.author_name,
+      thumbnail: data.thumbnail_url,
+      url,
+    };
+  }
+
   public async getMediaInfo(url: string): Promise<MediaInfo> {
     const isYt = this.isYouTubeUrl(url);
-    const strategies = isYt ? PLAYER_CLIENT_STRATEGIES : [PLAYER_CLIENT_STRATEGIES[0]];
 
-    let lastError: Error | null = null;
-    for (let i = 0; i < strategies.length; i++) {
-      const strategy = strategies[i];
+    if (isYt) {
+      // First try yt-dlp. If blocked by YouTube BotGuard, seamlessly fall back to YouTube oEmbed API
       try {
-        return await this.executeGetMediaInfo(url, strategy);
+        return await this.executeGetMediaInfo(url, PLAYER_CLIENT_STRATEGIES[0]);
       } catch (err: unknown) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        const isBot = lastError.message.includes("challenged anonymous access");
-        if (isBot && i < strategies.length - 1) {
-          this.logger.warn(
-            `YouTube bot challenge encountered with strategy "${strategy}". Retrying with fallback "${strategies[i + 1]}"...`,
-            { url }
-          );
-          continue;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `yt-dlp metadata inspection challenged on server IP (${errMsg}). Falling back to YouTube oEmbed API...`,
+          { url }
+        );
+        try {
+          return await this.getOembedInfo(url);
+        } catch (oembedErr: unknown) {
+          this.logger.error("YouTube oEmbed metadata fallback also failed:", oembedErr);
+          throw err;
         }
-        throw lastError;
       }
     }
 
-    throw lastError || new AppError("Failed to inspect media link.");
+    return await this.executeGetMediaInfo(url, PLAYER_CLIENT_STRATEGIES[0]);
   }
 
   private async executeGetMediaInfo(url: string, clientStrategy: string): Promise<MediaInfo> {
@@ -399,28 +436,166 @@ export class YtDlpDownloader implements IDownloaderService {
 
   public async download(options: DownloadOptions): Promise<DownloadResult> {
     const isYt = this.isYouTubeUrl(options.url);
-    const strategies = isYt ? PLAYER_CLIENT_STRATEGIES : [PLAYER_CLIENT_STRATEGIES[0]];
 
-    let lastError: Error | null = null;
-    for (let i = 0; i < strategies.length; i++) {
-      const strategy = strategies[i];
+    // If it's a YouTube URL, try direct yt-dlp first. If BotGuard challenges it, fall back to federated stream proxy.
+    if (isYt) {
       try {
-        return await this.executeDownload(options, strategy);
+        return await this.executeDownload(options, PLAYER_CLIENT_STRATEGIES[0]);
       } catch (err: unknown) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        const isBot = lastError.message.includes("challenged anonymous access");
-        if (isBot && i < strategies.length - 1) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const isBot = this.isBotChallenge(errMsg) || errMsg.includes("challenged anonymous access");
+        if (isBot) {
           this.logger.warn(
-            `YouTube bot challenge encountered during download with strategy "${strategy}". Retrying with fallback "${strategies[i + 1]}"...`,
+            "yt-dlp challenged by YouTube BotGuard on server IP. Attempting federated stream proxy download fallback...",
             { url: options.url }
           );
-          continue;
+          try {
+            return await this.downloadViaFederatedStream(options);
+          } catch (fedErr: unknown) {
+            this.logger.error("Federated stream proxy download also failed:", fedErr);
+            throw err;
+          }
         }
-        throw lastError;
+        throw err;
       }
     }
 
-    throw lastError || new AppError("Failed to download media.");
+    return await this.executeDownload(options, PLAYER_CLIENT_STRATEGIES[0]);
+  }
+
+  private async downloadViaFederatedStream(options: DownloadOptions): Promise<DownloadResult> {
+    const videoId = this.extractYouTubeId(options.url);
+    if (!videoId) {
+      throw new AppError("Invalid YouTube URL: Could not extract video ID.");
+    }
+
+    const isAudio = AUDIO_FORMATS.includes(options.format);
+    const uniquePrefix = `dl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const ffmpegBinary = await this.ensureFfmpegBinary();
+
+    let streamUrl: string | null = null;
+    let videoTitle = "YouTube Media";
+
+    for (const instance of FEDERATED_STREAM_INSTANCES) {
+      try {
+        const apiUrl = `${instance}/streams/${videoId}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+        const res = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) continue;
+
+        const data = (await res.json()) as {
+          title?: string;
+          audioStreams?: Array<{ url: string; bitrate?: number; mimeType?: string }>;
+          videoStreams?: Array<{ url: string; quality?: string; height?: number; videoOnly?: boolean; mimeType?: string }>;
+        };
+
+        if (data.title) videoTitle = data.title;
+
+        if (isAudio && data.audioStreams && data.audioStreams.length > 0) {
+          const sorted = [...data.audioStreams].sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          streamUrl = sorted[0].url;
+          break;
+        } else if (!isAudio && data.videoStreams && data.videoStreams.length > 0) {
+          const combined = data.videoStreams.filter((s) => !s.videoOnly);
+          if (combined.length > 0) {
+            const sorted = [...combined].sort((a, b) => (b.height || 0) - (a.height || 0));
+            streamUrl = sorted[0].url;
+            break;
+          } else {
+            streamUrl = data.videoStreams[0].url;
+            break;
+          }
+        }
+      } catch (err: unknown) {
+        this.logger.debug(`Federated instance ${instance} failed: ${String(err)}`);
+      }
+    }
+
+    if (!streamUrl) {
+      throw new AppError(
+        "YouTube challenged anonymous access from this server IP, and federated fallback streams could not be reached. " +
+        "Please try again shortly or configure YTDLP_PROXY in .env to route requests through a residential proxy."
+      );
+    }
+
+    const sanitizedTitle = videoTitle
+      .replace(/[^\w\s.-]/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+    const destFilename = `${uniquePrefix}_${sanitizedTitle}.${options.format}`;
+    const destPath = path.join(this.tempDir, destFilename);
+
+    this.logger.info(`Downloading via federated stream for "${videoTitle}" (Format: ${options.format})...`);
+
+    if (ffmpegBinary) {
+      await this.downloadWithFfmpeg(streamUrl, destPath, options, ffmpegBinary);
+    } else {
+      await this.downloadDirectStream(streamUrl, destPath);
+    }
+
+    const stats = await fsPromises.stat(destPath);
+    return {
+      filePath: destPath,
+      filename: destFilename,
+      fileSizeBytes: stats.size,
+      title: sanitizedTitle,
+      format: options.format,
+      isAudio,
+    };
+  }
+
+  private async downloadWithFfmpeg(
+    streamUrl: string,
+    outputPath: string,
+    options: DownloadOptions,
+    ffmpegBinary: string
+  ): Promise<void> {
+    const isAudio = AUDIO_FORMATS.includes(options.format);
+    const args: string[] = ["-y", "-i", streamUrl];
+
+    if (isAudio) {
+      args.push("-vn", "-b:a", `${options.audioBitrate || "192"}k`, outputPath);
+    } else {
+      args.push("-c", "copy", outputPath);
+    }
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(ffmpegBinary, args);
+      let stderr = "";
+
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      proc.on("close", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new AppError(`FFmpeg failed with exit code ${code}: ${stderr.slice(-300)}`));
+        }
+      });
+
+      proc.on("error", (err) => {
+        reject(new AppError(`Could not launch FFmpeg: ${err.message}`));
+      });
+    });
+  }
+
+  private async downloadDirectStream(streamUrl: string, outputPath: string): Promise<void> {
+    const res = await fetch(streamUrl);
+    if (!res.ok) {
+      throw new AppError(`Direct stream download failed (HTTP ${res.status})`);
+    }
+    const fileStream = fs.createWriteStream(outputPath);
+    if (!res.body) {
+      throw new AppError("No response body received from stream source.");
+    }
+    await pipeline(Readable.fromWeb(res.body as any), fileStream);
   }
 
   private async executeDownload(options: DownloadOptions, clientStrategy: string): Promise<DownloadResult> {
