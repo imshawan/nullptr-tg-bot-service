@@ -253,6 +253,7 @@ export class FileServerService implements IFileServerService {
   private async resolvePublicIp(): Promise<string | null> {
     const providers = [
       "https://api.ipify.org",
+      "http://checkip.amazonaws.com",
       "https://ifconfig.me/ip",
       "https://icanhazip.com",
     ];
@@ -260,7 +261,7 @@ export class FileServerService implements IFileServerService {
     for (const provider of providers) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         const res = await fetch(provider, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
@@ -274,6 +275,9 @@ export class FileServerService implements IFileServerService {
       }
     }
 
+    this.logger.warn(
+      "[nullptr] Could not auto-detect public IP. Please set FILE_SERVER_BASE_URL=http://<VPS_IP>:3000 in .env for direct download buttons."
+    );
     return null;
   }
 }

@@ -46,3 +46,45 @@ export function formatDuration(seconds: number): string {
 
   return parts.join(" ");
 }
+
+/**
+ * Validates if a URL is acceptable for Telegram InlineKeyboardButton 'url' field.
+ * Telegram strictly rejects localhost, loopback, private RFC1918 IPs, and non-http(s) protocols with BUTTON_URL_INVALID.
+ */
+export function isTelegramButtonUrl(urlStr: string): boolean {
+  if (!urlStr) return false;
+  try {
+    const parsed = new URL(urlStr);
+    if (!["http:", "https:"].includes(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".local") ||
+      host.startsWith("192.168.") ||
+      host.startsWith("10.") ||
+      host.startsWith("172.16.") ||
+      host.startsWith("172.17.") ||
+      host.startsWith("172.18.") ||
+      host.startsWith("172.19.") ||
+      host.startsWith("172.20.") ||
+      host.startsWith("172.21.") ||
+      host.startsWith("172.22.") ||
+      host.startsWith("172.23.") ||
+      host.startsWith("172.24.") ||
+      host.startsWith("172.25.") ||
+      host.startsWith("172.26.") ||
+      host.startsWith("172.27.") ||
+      host.startsWith("172.28.") ||
+      host.startsWith("172.29.") ||
+      host.startsWith("172.30.") ||
+      host.startsWith("172.31.")
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}

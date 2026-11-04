@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 import { MediaFormat, MediaQuality } from "@/domain/downloader/downloader.types";
 import { InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
-import { formatDuration } from "@/utils/text.utils";
+import { formatDuration, isTelegramButtonUrl } from "@/utils/text.utils";
 
 // In-memory cache for pending interactive download selections: token -> URL
 export const pendingDownloadUrls = new Map<string, { url: string; title: string; createdAt: number }>();
@@ -162,29 +162,50 @@ export class DownloadCommand implements ICommandHandler {
             "",
             `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
             `🚀 *Direct high-speed download link (No Size Limit):*`,
-            `🔗 [Click Here to Download](${downloadUrl})`,
+            `${downloadUrl}`,
             "",
             `⏱️ _This link will remain active for 2 hours._`,
           ].join("\n");
 
-          const keyboard: InlineKeyboardMarkup = {
-            inline_keyboard: [
-              [
-                {
-                  text: `📥 Download (${sizeMb} MB)`,
-                  url: downloadUrl,
-                },
-              ],
-            ],
-          };
+          const canShowButton = isTelegramButtonUrl(downloadUrl);
+          const keyboard: InlineKeyboardMarkup | undefined = canShowButton
+            ? {
+                inline_keyboard: [
+                  [
+                    {
+                      text: `📥 Download (${sizeMb} MB)`,
+                      url: downloadUrl,
+                    },
+                  ],
+                ],
+              }
+            : undefined;
 
-          await ctx.telegram.editMessageText({
-            chat_id: ctx.chatId,
-            message_id: progressMsg.message_id,
-            text,
-            parse_mode: "Markdown",
-            reply_markup: keyboard,
-          });
+          try {
+            await ctx.telegram.editMessageText({
+              chat_id: ctx.chatId,
+              message_id: progressMsg.message_id,
+              text,
+              parse_mode: "Markdown",
+              reply_markup: keyboard,
+            });
+          } catch (editErr: unknown) {
+            ctx.logger.warn(`Failed to send rich markdown message, falling back to plain text: ${String(editErr)}`);
+            await ctx.telegram.editMessageText({
+              chat_id: ctx.chatId,
+              message_id: progressMsg.message_id,
+              text: [
+                `🎬 ${result.title}`,
+                `📦 File Size: ${sizeMb} MB`,
+                "",
+                `ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`,
+                `🚀 Direct high-speed download link (No Size Limit):`,
+                `${downloadUrl}`,
+                "",
+                `⏱️ This link will remain active for 2 hours.`,
+              ].join("\n"),
+            });
+          }
           return;
         }
 
