@@ -61,7 +61,7 @@ src/
   - **Direct Link Detection**: Simply paste a link into chat to open an interactive format selector.
   - **Interactive Inline Buttons**: Choose MP3 (320k), M4A, Best MP4, 720p, or 480p with a single tap.
   - **Telegram 50MB Guard**: Detects files exceeding Telegram's 50MB Bot API upload limit and guides the user.
-  - **Pre-Bundled Multi-Platform Binaries**: Pre-bundled official standalone executables for both `yt-dlp` and `ffmpeg` across Windows (`bin/win32/`), Linux (`bin/linux/`), and macOS (`bin/darwin/`) with zero runtime downloading.
+  - **Pre-Bundled Multi-Platform & Multi-Architecture Binaries**: Pre-bundled standalone executables for both `yt-dlp` and `ffmpeg` across Windows (`bin/win32/`), Linux ARM64 / Oracle Cloud Ampere A1 (`bin/linux-arm64/`), Linux x86_64 (`bin/linux-x64/`), macOS Apple Silicon (`bin/darwin-arm64/`), and macOS Intel (`bin/darwin-x64/`) with zero runtime downloading.
 - **AI Streaming with Ollama (Oracle Cloud)**:
   - Real-time token streaming with debounced edits (1200ms) to prevent Telegram 429 rate limits.
   - Continuous "typing..." heartbeat while the model processes complex prompts.

@@ -48,8 +48,8 @@ export class YtDlpDownloader implements IDownloaderService {
   }
 
   /**
-   * Resolves the pre-bundled yt-dlp binary for the current operating system (win32, linux, darwin).
-   * Zero-runtime-download: binary must be bundled inside bin/<platform>/ or available in system PATH.
+   * Resolves the pre-bundled yt-dlp binary for the current operating system and architecture.
+   * Zero-runtime-download: binary must be bundled inside bin/ or available in system PATH.
    */
   public async ensureBinary(): Promise<string> {
     if (this.ytdlpBinaryPath && fs.existsSync(this.ytdlpBinaryPath)) {
@@ -57,55 +57,49 @@ export class YtDlpDownloader implements IDownloaderService {
     }
 
     const platform = process.platform;
+    const arch = process.arch;
     const isWindows = platform === "win32";
     const binaryName = isWindows ? "yt-dlp.exe" : "yt-dlp";
+    const archAlias = arch === "arm64" ? "aarch64" : arch;
 
-    // 1. Check pre-bundled platform directory: bin/<platform>/yt-dlp(.exe)
-    const bundledPath = path.resolve(process.cwd(), "bin", platform, binaryName);
-    if (fs.existsSync(bundledPath)) {
-      if (!isWindows) {
-        try {
-          await fsPromises.chmod(bundledPath, 0o755);
-        } catch (err: unknown) {
-          this.logger.warn(`Failed to set executable permissions on ${bundledPath}`, { error: String(err) });
-        }
-      }
-      this.ytdlpBinaryPath = bundledPath;
-      return bundledPath;
+    const candidates = [
+      // 1. Architecture-specific platform dir (e.g. bin/linux-arm64/yt-dlp, bin/linux-x64/yt-dlp)
+      path.resolve(process.cwd(), "bin", `${platform}-${arch}`, binaryName),
+      // 2. Architecture suffix within platform dir (e.g. bin/linux/yt-dlp_aarch64)
+      path.resolve(process.cwd(), "bin", platform, `${binaryName}_${archAlias}`),
+      path.resolve(process.cwd(), "bin", platform, `${binaryName}_${arch}`),
+      // 3. Platform directory (e.g. bin/win32/yt-dlp.exe, bin/linux/yt-dlp)
+      path.resolve(process.cwd(), "bin", platform, binaryName),
+      // 4. Flat bin directory (e.g. bin/yt-dlp)
+      path.resolve(process.cwd(), "bin", binaryName),
+    ];
+
+    const resolved = await this.resolveCandidateBinary(candidates);
+    if (resolved) {
+      this.logger.debug(`Resolved yt-dlp binary at: ${resolved}`);
+      this.ytdlpBinaryPath = resolved;
+      return resolved;
     }
 
-    // 2. Check flat bin/ directory fallback (e.g. bin/yt-dlp.exe)
-    const flatBinPath = path.resolve(process.cwd(), "bin", binaryName);
-    if (fs.existsSync(flatBinPath)) {
-      if (!isWindows) {
-        try {
-          await fsPromises.chmod(flatBinPath, 0o755);
-        } catch (err: unknown) {
-          this.logger.warn(`Failed to set executable permissions on ${flatBinPath}`, { error: String(err) });
-        }
-      }
-      this.ytdlpBinaryPath = flatBinPath;
-      return flatBinPath;
-    }
-
-    // 3. Check system PATH
+    // 5. Check system PATH
     const systemPath = await this.findInSystemPath(binaryName);
     if (systemPath) {
+      this.logger.debug(`Resolved yt-dlp binary from system PATH: ${systemPath}`);
       this.ytdlpBinaryPath = systemPath;
       return systemPath;
     }
 
-    // 4. Zero runtime download policy — throw clear diagnostic error
+    // Zero runtime download policy — throw clear diagnostic error
     throw new AppError(
-      `yt-dlp binary not found for platform "${platform}". ` +
-      `Expected pre-bundled binary at: ${bundledPath}. ` +
-      `Runtime downloading is disabled. Please ensure the binary is installed in bin/${platform}/${binaryName} or available in system PATH.`
+      `yt-dlp binary not found for platform "${platform}" (${arch}). ` +
+      `Expected pre-bundled binary in bin/${platform}-${arch}/${binaryName} or available in system PATH. ` +
+      `Runtime downloading is disabled.`
     );
   }
 
   /**
-   * Resolves the pre-bundled ffmpeg binary for the current operating system (win32, linux, darwin).
-   * Zero-runtime-download: binary must be bundled inside bin/<platform>/ or available in system PATH.
+   * Resolves the pre-bundled ffmpeg binary for the current operating system and architecture.
+   * Zero-runtime-download: binary must be bundled inside bin/ or available in system PATH.
    */
   public async ensureFfmpegBinary(): Promise<string | null> {
     if (this.ffmpegBinaryPath && fs.existsSync(this.ffmpegBinaryPath)) {
@@ -113,48 +107,62 @@ export class YtDlpDownloader implements IDownloaderService {
     }
 
     const platform = process.platform;
+    const arch = process.arch;
     const isWindows = platform === "win32";
     const binaryName = isWindows ? "ffmpeg.exe" : "ffmpeg";
+    const archAlias = arch === "arm64" ? "aarch64" : arch;
 
-    // 1. Check pre-bundled platform directory: bin/<platform>/ffmpeg(.exe)
-    const bundledPath = path.resolve(process.cwd(), "bin", platform, binaryName);
-    if (fs.existsSync(bundledPath)) {
-      if (!isWindows) {
-        try {
-          await fsPromises.chmod(bundledPath, 0o755);
-        } catch (err: unknown) {
-          this.logger.warn(`Failed to set executable permissions on ${bundledPath}`, { error: String(err) });
-        }
-      }
-      this.ffmpegBinaryPath = bundledPath;
-      return bundledPath;
+    const candidates = [
+      // 1. Architecture-specific platform dir (e.g. bin/linux-arm64/ffmpeg, bin/linux-x64/ffmpeg)
+      path.resolve(process.cwd(), "bin", `${platform}-${arch}`, binaryName),
+      // 2. Architecture suffix within platform dir (e.g. bin/linux/ffmpeg_aarch64)
+      path.resolve(process.cwd(), "bin", platform, `${binaryName}_${archAlias}`),
+      path.resolve(process.cwd(), "bin", platform, `${binaryName}_${arch}`),
+      // 3. Platform directory (e.g. bin/win32/ffmpeg.exe, bin/linux/ffmpeg)
+      path.resolve(process.cwd(), "bin", platform, binaryName),
+      // 4. Flat bin directory (e.g. bin/ffmpeg)
+      path.resolve(process.cwd(), "bin", binaryName),
+    ];
+
+    const resolved = await this.resolveCandidateBinary(candidates);
+    if (resolved) {
+      this.logger.debug(`Resolved FFmpeg binary at: ${resolved}`);
+      this.ffmpegBinaryPath = resolved;
+      return resolved;
     }
 
-    // 2. Check flat bin/ directory fallback (e.g. bin/ffmpeg.exe)
-    const flatBinPath = path.resolve(process.cwd(), "bin", binaryName);
-    if (fs.existsSync(flatBinPath)) {
-      if (!isWindows) {
-        try {
-          await fsPromises.chmod(flatBinPath, 0o755);
-        } catch (err: unknown) {
-          this.logger.warn(`Failed to set executable permissions on ${flatBinPath}`, { error: String(err) });
-        }
-      }
-      this.ffmpegBinaryPath = flatBinPath;
-      return flatBinPath;
-    }
-
-    // 3. Check system PATH
+    // 5. Check system PATH
     const systemPath = await this.findInSystemPath(binaryName);
     if (systemPath) {
+      this.logger.debug(`Resolved FFmpeg binary from system PATH: ${systemPath}`);
       this.ffmpegBinaryPath = systemPath;
       return systemPath;
     }
 
     this.logger.warn(
-      `FFmpeg binary not found for platform "${platform}". ` +
-      `Expected pre-bundled binary at: ${bundledPath}. Audio extraction and conversions may fail.`
+      `FFmpeg binary not found for platform "${platform}" (${arch}). Audio extraction and conversions may fail.`
     );
+    return null;
+  }
+
+  private async resolveCandidateBinary(candidates: string[]): Promise<string | null> {
+    const isWindows = process.platform === "win32";
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        if (!isWindows) {
+          try {
+            await fsPromises.chmod(candidate, 0o755);
+          } catch (err: unknown) {
+            this.logger.warn(`Failed to set executable permissions on ${candidate}`, {
+              error: String(err),
+            });
+          }
+        }
+        return candidate;
+      }
+    }
+
     return null;
   }
 

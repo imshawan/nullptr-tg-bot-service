@@ -42,12 +42,15 @@ src/domain/downloader/
    - **Audio Extraction**: `-x --extract-audio --audio-format mp3 --audio-quality 192K` (or 320K).
    - **Video Quality**: Selects optimal video streams (`bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`) constrained by resolution height (1080p, 720p, 480p, 360p).
 
-4. **Pre-Bundled Multi-Platform Binaries (Zero Runtime Downloads)**:
-   - Standalone executables for both **`yt-dlp`** and **`ffmpeg`** are bundled directly inside the project under `bin/`:
-     - Windows (`bin/win32/`): `yt-dlp.exe` & `ffmpeg.exe`
-     - Linux (`bin/linux/`): `yt-dlp` & `ffmpeg`
-     - macOS (`bin/darwin/`): `yt-dlp` & `ffmpeg`
-   - At runtime, `YtDlpDownloader.ensureBinary()` and `ensureFfmpegBinary()` detect `process.platform` and automatically resolve the corresponding binaries (`bin/<platform>/yt-dlp[.exe]` and `bin/<platform>/ffmpeg[.exe]`).
+4. **Pre-Bundled Multi-Platform & Multi-Architecture Binaries (Zero Runtime Downloads)**:
+   - Standalone executables for both **`yt-dlp`** and **`ffmpeg`** are bundled directly inside the project under `bin/`, organized by platform and CPU architecture:
+     - **Windows x64** (`bin/win32/`): `yt-dlp.exe` & `ffmpeg.exe`
+     - **Linux ARM64 / aarch64** (`bin/linux-arm64/`): `yt-dlp` (aarch64 ELF) & `ffmpeg` (aarch64 ELF) — for Oracle Cloud Ampere A1, AWS Graviton, Raspberry Pi
+     - **Linux x86_64** (`bin/linux-x64/`): `yt-dlp` (x86_64 ELF) & `ffmpeg` (x86_64 ELF) — for AMD/Intel Linux servers
+     - **macOS Apple Silicon** (`bin/darwin-arm64/`): `yt-dlp` (universal) & `ffmpeg` (arm64 Mach-O)
+     - **macOS Intel** (`bin/darwin-x64/`): `yt-dlp` (universal) & `ffmpeg` (x86_64 Mach-O)
+     - **Universal Fallback** (`bin/yt-dlp`, `bin/linux/yt-dlp`): Universal multi-platform python3 zipapp
+   - At runtime, `YtDlpDownloader.ensureBinary()` and `ensureFfmpegBinary()` detect `process.platform` and `process.arch`, resolving `bin/<platform>-<arch>/<binary>` with fallbacks.
    - On Unix (`linux`, `darwin`), permissions are set automatically to `0o755` (`chmod 755`).
    - If custom paths are set in `YTDLP_PATH` / `FFMPEG_PATH` or installed globally in system `PATH`, they serve as flexible overrides.
    - **Zero Runtime Downloads**: Network downloading of binaries at runtime is strictly disabled. All binaries are self-contained within the repository.
