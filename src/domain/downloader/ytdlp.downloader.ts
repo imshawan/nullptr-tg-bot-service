@@ -3,8 +3,6 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { IDownloaderService } from "@/domain/downloader/downloader.interface";
 import {
   MediaInfo,
@@ -27,75 +25,12 @@ const QUALITY_MAP: Record<MediaQuality, string> = {
   audio: "bestaudio/best",
 };
 
-/**
- * YouTube player client strategies in order of bypass reliability on datacenter/VPS networks without cookies.
- * 1. undefined: Pure default negotiation using installed JS runtime + remote EJS solver.
- * 2. ios: iOS application client (often bypasses web botguard entirely).
- * 3. android_creator,android_vr: Specialized Android creator/VR endpoints.
- * 4. web_embedded,tv_embedded: Embedded player clients.
- */
-const PLAYER_CLIENT_STRATEGIES: (string | undefined)[] = [
-  undefined,
-  "ios",
-  "android_creator,android_vr",
-  "web_embedded,tv_embedded",
-];
-
-const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-
-/**
- * Fallback Cobalt API instances used when directory discovery is unavailable.
- */
-const COBALT_FALLBACK_INSTANCES = [
-  "https://cobalt-api.kwiatekm.tokyo",
-  "https://api.cobalt.tools",
-  "https://cobalt.api.scot",
-  "https://cobalt.shdw.link",
-  "https://co.eepy.today",
-];
-
-/**
- * Public Invidious API instances used as automated fallback to resolve stream URLs
- * when YouTube BotGuard blocks direct VPS IP access without cookies.
- */
-const INVIDIOUS_INSTANCES = [
-  "https://inv.nadeko.net",
-  "https://invidious.nerdvpn.de",
-  "https://invidious.privacydev.net",
-  "https://yewtu.be",
-  "https://vid.puffyan.us",
-  "https://invidious.drgns.space",
-  "https://invidious.jing.rocks",
-  "https://iv.ggtyler.dev",
-  "https://invidious.no-val.org",
-];
-
-/**
- * Public Piped API instances used as secondary fallback.
- */
-const PIPED_INSTANCES = [
-  "https://api.piped.private.coffee",
-  "https://pipedapi.adminforge.de",
-  "https://pipedapi.leptons.xyz",
-  "https://pipedapi.drgns.space",
-  "https://api.piped.projectsegfau.lt",
-];
-
-interface StreamCandidate {
-  streamUrl: string;
-  title: string;
-  source: string;
-  directFile?: boolean;
-}
-
 export class YtDlpDownloader implements IDownloaderService {
   private ytdlpBinaryPath: string | null = null;
   private ffmpegBinaryPath: string | null = null;
   private readonly proxyUrl?: string;
   private readonly tempDir: string;
   private readonly logger: ILogger;
-  private cachedCobaltInstances: { instances: string[]; expiresAt: number } | null = null;
 
   constructor(options: {
     customYtDlpPath?: string;
@@ -285,22 +220,13 @@ export class YtDlpDownloader implements IDownloaderService {
     }
   }
 
-  private getProcessEnv(): NodeJS.ProcessEnv {
-    const nodeDir = path.dirname(process.execPath);
-    const currentPath = process.env.PATH || "";
-    return {
-      ...process.env,
-      PATH: currentPath ? `${nodeDir}${path.delimiter}${currentPath}` : nodeDir,
-    };
-  }
-
-  private buildBaseArgs(playerClients?: string): string[] {
+  private buildBaseArgs(): string[] {
     const args: string[] = [
       "--no-warnings",
       "--no-playlist",
       "--socket-timeout",
       "30",
-      // Force IPv4 to prevent datacenter IPv6 subnet blocks from YouTube
+      // Force IPv4 to prevent datacenter IPv6 subnet blocks
       "--force-ipv4",
       // Allow yt-dlp to fetch required EJS challenge solving components dynamically
       "--remote-components",
@@ -309,10 +235,6 @@ export class YtDlpDownloader implements IDownloaderService {
       "--js-runtimes",
       "node",
     ];
-
-    if (playerClients) {
-      args.push("--extractor-args", `youtube:player_client=${playerClients}`);
-    }
 
     if (this.proxyUrl) {
       args.push("--proxy", this.proxyUrl);
@@ -366,71 +288,30 @@ export class YtDlpDownloader implements IDownloaderService {
     return new AppError(`yt-dlp error (${codeStr}): ${trimmed || "Failed to process media request"}`);
   }
 
-  public extractYouTubeId(url: string): string | null {
-    const match = url.match(
-      /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i
-    );
-    return match ? match[1] : null;
-  }
-
-  private async getOembedInfo(url: string): Promise<MediaInfo> {
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    const res = await fetch(oembedUrl);
-    if (!res.ok) {
-      throw new AppError(`Could not fetch YouTube video details (HTTP ${res.status})`);
+  private async cleanupPrefix(prefix: string): Promise<void> {
+    try {
+      const files = await fsPromises.readdir(this.tempDir);
+      const matches = files.filter((f) => f.startsWith(prefix));
+      await Promise.all(
+        matches.map((f) => fsPromises.unlink(path.join(this.tempDir, f)).catch(() => {}))
+      );
+    } catch {
+      // Ignore cleanup error
     }
-    const data = (await res.json()) as {
-      title?: string;
-      author_name?: string;
-      thumbnail_url?: string;
-    };
-    const id = this.extractYouTubeId(url) || String(Date.now());
-    return {
-      id,
-      title: data.title || "YouTube Video",
-      uploader: data.author_name,
-      thumbnail: data.thumbnail_url,
-      url,
-    };
   }
 
   public async getMediaInfo(url: string): Promise<MediaInfo> {
-    const isYt = this.isYouTubeUrl(url);
-
-    if (isYt) {
-      // First try yt-dlp. If blocked by YouTube BotGuard, seamlessly fall back to YouTube oEmbed API
-      try {
-        return await this.executeGetMediaInfo(url, PLAYER_CLIENT_STRATEGIES[0]);
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `yt-dlp metadata inspection challenged on server IP (${errMsg}). Falling back to YouTube oEmbed API...`,
-          { url }
-        );
-        try {
-          return await this.getOembedInfo(url);
-        } catch (oembedErr: unknown) {
-          this.logger.error("YouTube oEmbed metadata fallback also failed:", oembedErr);
-          throw err;
-        }
-      }
-    }
-
-    return await this.executeGetMediaInfo(url, PLAYER_CLIENT_STRATEGIES[0]);
-  }
-
-  private async executeGetMediaInfo(url: string, clientStrategy?: string): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
-        ...this.buildBaseArgs(clientStrategy),
+        ...this.buildBaseArgs(),
         "--dump-single-json",
         "--skip-download",
         url,
       ];
 
-      const proc = spawn(binary, args, { env: this.getProcessEnv() });
+      const proc = spawn(binary, args);
       let stdout = "";
       let stderr = "";
 
@@ -470,694 +351,7 @@ export class YtDlpDownloader implements IDownloaderService {
     });
   }
 
-  private async cleanupPrefix(prefix: string): Promise<void> {
-    try {
-      const files = await fsPromises.readdir(this.tempDir);
-      const matches = files.filter((f) => f.startsWith(prefix));
-      await Promise.all(
-        matches.map((f) => fsPromises.unlink(path.join(this.tempDir, f)).catch(() => {}))
-      );
-    } catch {
-      // Ignore cleanup error
-    }
-  }
-
   public async download(options: DownloadOptions): Promise<DownloadResult> {
-    const isYt = this.isYouTubeUrl(options.url);
-
-    // If it's a YouTube URL, try direct yt-dlp first across player client strategies.
-    // If challenged by YouTube BotGuard on all strategies, fall back to federated stream proxy.
-    if (isYt) {
-      for (const strategy of PLAYER_CLIENT_STRATEGIES) {
-        try {
-          return await this.executeDownload(options, strategy);
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          const isBot = this.isBotChallenge(errMsg) || errMsg.includes("challenged anonymous access");
-          if (!isBot) {
-            throw err;
-          }
-          this.logger.debug(`yt-dlp strategy '${strategy}' challenged by YouTube: ${errMsg}`);
-        }
-      }
-
-      this.logger.warn(
-        "All yt-dlp client strategies challenged by YouTube on server IP. Attempting federated stream proxy download fallback...",
-        { url: options.url }
-      );
-      try {
-        return await this.downloadViaFederatedStream(options);
-      } catch (fedErr: unknown) {
-        this.logger.error("Federated stream proxy download also failed:", fedErr);
-        throw fedErr;
-      }
-    }
-
-    return await this.executeDownload(options, PLAYER_CLIENT_STRATEGIES[0]);
-  }
-
-  private async getCobaltInstances(): Promise<string[]> {
-    const now = Date.now();
-    if (this.cachedCobaltInstances && this.cachedCobaltInstances.expiresAt > now) {
-      return this.cachedCobaltInstances.instances;
-    }
-
-    const discovered: string[] = [];
-
-    // Source 1: instances.cobalt.best API
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch("https://instances.cobalt.best/api/instances.json", {
-        headers: { Accept: "application/json", "User-Agent": BROWSER_USER_AGENT },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = (await res.json()) as any[];
-        if (Array.isArray(data)) {
-          for (const item of data) {
-            if (item.online?.api && item.api) {
-              const proto = item.protocol || "https";
-              discovered.push(`${proto}://${item.api}`.replace(/\/$/, ""));
-            }
-          }
-        }
-      }
-    } catch (err: unknown) {
-      this.logger.warn(`Could not discover cobalt instances from instances.cobalt.best: ${String(err)}`);
-    }
-
-    // Source 2: cobalt.directory
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch("https://cobalt.directory/api/working?type=api&turnstile=0", {
-        headers: { Accept: "application/json", "User-Agent": BROWSER_USER_AGENT },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const list = Array.isArray(data) ? data : data.instances || [];
-        for (const item of list) {
-          const u = typeof item === "string" ? item : item.url || item.api;
-          if (u && typeof u === "string") {
-            const clean = u.startsWith("http") ? u : `https://${u}`;
-            discovered.push(clean.replace(/\/$/, ""));
-          }
-        }
-      }
-    } catch (err: unknown) {
-      this.logger.warn(`Could not discover cobalt instances from cobalt.directory: ${String(err)}`);
-    }
-
-    const merged = Array.from(new Set([...discovered, ...COBALT_FALLBACK_INSTANCES]));
-    this.logger.info(`Resolved ${merged.length} Cobalt candidate instances.`);
-    this.cachedCobaltInstances = {
-      instances: merged,
-      expiresAt: now + 5 * 60 * 1000,
-    };
-    return merged;
-  }
-
-  private async downloadViaFederatedStream(options: DownloadOptions): Promise<DownloadResult> {
-    const videoId = this.extractYouTubeId(options.url);
-    if (!videoId) {
-      throw new AppError("Invalid YouTube URL: Could not extract video ID.");
-    }
-
-    const isAudio = AUDIO_FORMATS.includes(options.format);
-    const ffmpegBinary = await this.ensureFfmpegBinary();
-    const providerErrors: string[] = [];
-
-    // 1. VKrDownloader API (direct extraction endpoint)
-    try {
-      const candidate = await this.queryVkrInstance(options.url, options.format, options.quality);
-      if (candidate) {
-        const result = await this.tryDownloadCandidate(candidate, options, ffmpegBinary);
-        if (result) return result;
-      } else {
-        providerErrors.push("VKrDownloader: No suitable format URL returned");
-      }
-    } catch (err: unknown) {
-      const msg = `VKrDownloader error: ${String(err)}`;
-      this.logger.warn(msg);
-      providerErrors.push(msg);
-    }
-
-    // 2. Cobalt instances (dynamically discovered Turnstile-free instances + fallbacks)
-    const cobaltInstances = await this.getCobaltInstances();
-    for (const instance of cobaltInstances) {
-      try {
-        const candidate = await this.queryCobaltInstance(
-          instance,
-          options.url,
-          options.format,
-          options.quality
-        );
-        if (candidate) {
-          const result = await this.tryDownloadCandidate(candidate, options, ffmpegBinary);
-          if (result) return result;
-        }
-      } catch (err: unknown) {
-        const msg = `Cobalt (${instance}): ${String(err)}`;
-        this.logger.warn(msg);
-        providerErrors.push(msg);
-      }
-    }
-
-    // 3. Piped instances (with proxy URL rewriting to prevent 403 IP binding blocks)
-    for (const instance of PIPED_INSTANCES) {
-      try {
-        const candidate = await this.queryPipedInstance(
-          instance,
-          videoId,
-          isAudio,
-          options.quality
-        );
-        if (candidate) {
-          const result = await this.tryDownloadCandidate(candidate, options, ffmpegBinary);
-          if (result) return result;
-        }
-      } catch (err: unknown) {
-        const msg = `Piped (${instance}): ${String(err)}`;
-        this.logger.warn(msg);
-        providerErrors.push(msg);
-      }
-    }
-
-    // 4. Invidious instances (with proxy route rewriting)
-    for (const instance of INVIDIOUS_INSTANCES) {
-      try {
-        const candidate = await this.queryInvidiousInstance(
-          instance,
-          videoId,
-          isAudio,
-          options.quality
-        );
-        if (candidate) {
-          const result = await this.tryDownloadCandidate(candidate, options, ffmpegBinary);
-          if (result) return result;
-        }
-      } catch (err: unknown) {
-        const msg = `Invidious (${instance}): ${String(err)}`;
-        this.logger.warn(msg);
-        providerErrors.push(msg);
-      }
-    }
-
-    const failureDetails =
-      providerErrors.length > 0 ? `\n\nRecent provider errors:\n` + providerErrors.slice(0, 3).join("\n") : "";
-
-    throw new AppError(
-      "YouTube challenged anonymous access from this server IP, and federated fallback stream proxies could not complete the download." +
-      failureDetails +
-      "\n\nPlease try again in a few moments, or configure YTDLP_PROXY in .env to route requests through a residential proxy."
-    );
-  }
-
-  private async tryDownloadCandidate(
-    candidate: StreamCandidate,
-    options: DownloadOptions,
-    ffmpegBinary: string | null
-  ): Promise<DownloadResult | null> {
-    const uniquePrefix = `dl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const sanitizedTitle = (candidate.title || "YouTube Media")
-      .replace(/[^\w\s.-]/gu, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80) || "Media";
-    const destFilename = `${uniquePrefix}_${sanitizedTitle}.${options.format}`;
-    const destPath = path.join(this.tempDir, destFilename);
-    const isAudio = AUDIO_FORMATS.includes(options.format);
-
-    this.logger.info(
-      `Attempting download via ${candidate.source} for "${candidate.title}" (Format: ${options.format})...`
-    );
-
-    try {
-      if (candidate.directFile) {
-        await this.downloadDirectStream(candidate.streamUrl, destPath);
-      } else if (ffmpegBinary) {
-        await this.downloadWithFfmpeg(candidate.streamUrl, destPath, options, ffmpegBinary);
-      } else {
-        await this.downloadDirectStream(candidate.streamUrl, destPath);
-      }
-
-      const stats = await fsPromises.stat(destPath);
-      if (stats.size < 1000) {
-        this.logger.warn(`File from ${candidate.source} was only ${stats.size} bytes (invalid stream).`);
-        await fsPromises.unlink(destPath).catch(() => {});
-        return null;
-      }
-
-      return {
-        filePath: destPath,
-        filename: destFilename,
-        fileSizeBytes: stats.size,
-        title: sanitizedTitle,
-        format: options.format,
-        isAudio,
-      };
-    } catch (err: unknown) {
-      this.logger.warn(`Download candidate attempt failed (${candidate.source}): ${String(err)}`);
-      await fsPromises.unlink(destPath).catch(() => {});
-      return null;
-    }
-  }
-
-  private async queryVkrInstance(
-    url: string,
-    format: MediaFormat,
-    quality?: MediaQuality
-  ): Promise<StreamCandidate | null> {
-    const vkrEndpoints = [
-      `https://api.vkrdownloader.com/server/?api_key=vkrdownloader&vkr=${encodeURIComponent(url)}`,
-      `https://vkrdownloader.org/server/?api_key=vkrdownloader&vkr=${encodeURIComponent(url)}`,
-    ];
-    const isAudio = AUDIO_FORMATS.includes(format);
-
-    for (const apiUrl of vkrEndpoints) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      try {
-        const res = await fetch(apiUrl, {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": BROWSER_USER_AGENT,
-          },
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          this.logger.warn(`VKr endpoint ${apiUrl} returned status ${res.status}`);
-          continue;
-        }
-
-        const data = (await res.json()) as {
-          title?: string;
-          formats?: Array<{
-            url: string;
-            format_id?: string;
-            ext?: string;
-          }>;
-        };
-
-        if (!data.formats || data.formats.length === 0) continue;
-
-        let selectedUrl: string | null = null;
-        if (isAudio) {
-          const audioFormat = data.formats.find(
-            (f) => f.format_id?.includes("audio") || f.ext === "mp3" || f.ext === "m4a"
-          );
-          selectedUrl = audioFormat ? audioFormat.url : data.formats[0].url;
-        } else {
-          const targetQuality = quality && quality !== "best" && quality !== "audio" ? quality : "720p";
-          const matching = data.formats.find(
-            (f) => f.format_id === targetQuality || f.format_id?.includes(targetQuality)
-          );
-          selectedUrl = matching ? matching.url : data.formats[0].url;
-        }
-
-        if (selectedUrl) {
-          return {
-            streamUrl: selectedUrl,
-            title: data.title || "YouTube Media",
-            source: "VKrDownloader API",
-            directFile: true,
-          };
-        }
-      } catch (err: unknown) {
-        this.logger.warn(`VKr endpoint ${apiUrl} failed: ${String(err)}`);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
-
-    return null;
-  }
-
-  private async queryCobaltInstance(
-    instance: string,
-    url: string,
-    format: MediaFormat,
-    quality?: MediaQuality
-  ): Promise<StreamCandidate | null> {
-    const isAudio = AUDIO_FORMATS.includes(format);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    // Cobalt v10 aFormat only accepts: "best", "mp3", "ogg", "wav", "opus"
-    const aFormat = format === "wav" ? "wav" : format === "mp3" ? "mp3" : "best";
-    const vQuality = quality && quality !== "best" && quality !== "audio"
-      ? quality.replace("p", "")
-      : "720";
-
-    const payload: Record<string, unknown> = {
-      url,
-      downloadMode: isAudio ? "audio" : "auto",
-      filenameStyle: "basic",
-    };
-
-    if (isAudio) {
-      payload.audioFormat = aFormat;
-      payload.aFormat = aFormat;
-    } else {
-      payload.videoQuality = vQuality;
-      payload.vQuality = vQuality;
-    }
-
-    try {
-      const res = await fetch(`${instance}/`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": BROWSER_USER_AGENT,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        this.logger.warn(`Cobalt ${instance} returned status ${res.status}`);
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        status?: string;
-        url?: string;
-        filename?: string;
-        picker?: Array<{ url: string }>;
-        error?: { code: string };
-      };
-
-      if (data.status === "error") {
-        this.logger.warn(`Cobalt ${instance} error: ${JSON.stringify(data.error)}`);
-        return null;
-      }
-
-      let streamUrl = data.url || data.picker?.[0]?.url;
-      if (!streamUrl) return null;
-
-      // Handle relative tunnel/stream URLs
-      if (streamUrl.startsWith("/")) {
-        streamUrl = `${instance}${streamUrl}`;
-      }
-
-      return {
-        streamUrl,
-        title: data.filename || "YouTube Media",
-        source: `Cobalt (${new URL(instance).hostname})`,
-        directFile: true,
-      };
-    } catch (err: unknown) {
-      this.logger.warn(`Cobalt ${instance} query exception: ${String(err)}`);
-      return null;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  private async queryInvidiousInstance(
-    instance: string,
-    videoId: string,
-    isAudio: boolean,
-    quality?: MediaQuality
-  ): Promise<StreamCandidate | null> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": BROWSER_USER_AGENT,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        this.logger.warn(`Invidious ${instance} returned status ${res.status}`);
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        title?: string;
-        formatStreams?: Array<{
-          url: string;
-          itag?: string | number;
-          qualityLabel?: string;
-          resolution?: string;
-        }>;
-        adaptiveFormats?: Array<{
-          url: string;
-          itag?: string | number;
-          type?: string;
-          bitrate?: string | number;
-        }>;
-      };
-
-      const title = data.title || "YouTube Media";
-      let rawUrl: string | null = null;
-
-      if (isAudio && data.adaptiveFormats && data.adaptiveFormats.length > 0) {
-        const audioOnly = data.adaptiveFormats.filter(
-          (f) => f.type?.includes("audio") || !f.type
-        );
-        if (audioOnly.length > 0) {
-          const sorted = [...audioOnly].sort(
-            (a, b) => Number(b.bitrate || 0) - Number(a.bitrate || 0)
-          );
-          rawUrl = sorted[0].url;
-        }
-      } else if (!isAudio && data.formatStreams && data.formatStreams.length > 0) {
-        const desiredLabel = quality && quality !== "best" && quality !== "audio" ? quality : "720p";
-        const exactMatch = data.formatStreams.find(
-          (s) => s.qualityLabel === desiredLabel || s.resolution === desiredLabel
-        );
-        const selected = exactMatch || data.formatStreams[0];
-        rawUrl = selected.url;
-      }
-
-      if (!rawUrl) return null;
-
-      let streamUrl = rawUrl;
-      if (rawUrl.startsWith("/")) {
-        streamUrl = `${instance}${rawUrl}`;
-      } else if (rawUrl.includes("googlevideo.com")) {
-        const parsed = new URL(rawUrl);
-        streamUrl = `${instance}${parsed.pathname}${parsed.search}`;
-      }
-
-      return {
-        streamUrl,
-        title,
-        source: `Invidious (${new URL(instance).hostname})`,
-        directFile: false,
-      };
-    } catch (err: unknown) {
-      this.logger.warn(`Invidious ${instance} query exception: ${String(err)}`);
-      return null;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  private async queryPipedInstance(
-    instance: string,
-    videoId: string,
-    isAudio: boolean,
-    quality?: MediaQuality
-  ): Promise<StreamCandidate | null> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": BROWSER_USER_AGENT,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        this.logger.warn(`Piped ${instance} returned status ${res.status}`);
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        title?: string;
-        proxyUrl?: string;
-        audioStreams?: Array<{ url: string; bitrate?: number }>;
-        videoStreams?: Array<{
-          url: string;
-          quality?: string;
-          height?: number;
-          videoOnly?: boolean;
-        }>;
-      };
-
-      const title = data.title || "YouTube Media";
-      let rawStreamUrl: string | null = null;
-
-      if (isAudio && data.audioStreams && data.audioStreams.length > 0) {
-        const sorted = [...data.audioStreams].sort(
-          (a, b) => (b.bitrate || 0) - (a.bitrate || 0)
-        );
-        rawStreamUrl = sorted[0].url;
-      } else if (!isAudio && data.videoStreams && data.videoStreams.length > 0) {
-        const combined = data.videoStreams.filter((s) => !s.videoOnly);
-        const targetList = combined.length > 0 ? combined : data.videoStreams;
-        const targetHeight = quality && quality !== "best" && quality !== "audio"
-          ? parseInt(quality.replace("p", ""), 10) || 720
-          : 720;
-        const matching = targetList.find((s) => s.height === targetHeight);
-        rawStreamUrl = matching ? matching.url : targetList[0].url;
-      }
-
-      if (!rawStreamUrl) return null;
-
-      let streamUrl = rawStreamUrl;
-      if (rawStreamUrl.includes("googlevideo.com")) {
-        const proxyBase = data.proxyUrl ? data.proxyUrl.replace(/\/$/, "") : instance;
-        const parsed = new URL(rawStreamUrl);
-        streamUrl = `${proxyBase}${parsed.pathname}${parsed.search}`;
-      } else if (rawStreamUrl.startsWith("/")) {
-        const proxyBase = data.proxyUrl ? data.proxyUrl.replace(/\/$/, "") : instance;
-        streamUrl = `${proxyBase}${rawStreamUrl}`;
-      }
-
-      return {
-        streamUrl,
-        title,
-        source: `Piped (${new URL(instance).hostname})`,
-        directFile: false,
-      };
-    } catch (err: unknown) {
-      this.logger.warn(`Piped ${instance} query exception: ${String(err)}`);
-      return null;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  private async downloadWithFfmpeg(
-    streamUrl: string,
-    outputPath: string,
-    options: DownloadOptions,
-    ffmpegBinary: string
-  ): Promise<void> {
-    const isAudio = AUDIO_FORMATS.includes(options.format);
-    const args: string[] = [
-      "-y",
-      "-user_agent",
-      BROWSER_USER_AGENT,
-      "-i",
-      streamUrl,
-    ];
-
-    if (isAudio) {
-      if (options.format === "mp3") {
-        args.push("-vn", "-c:a", "libmp3lame", "-b:a", `${options.audioBitrate || "192"}k`, outputPath);
-      } else if (options.format === "m4a") {
-        args.push("-vn", "-c:a", "aac", "-b:a", `${options.audioBitrate || "192"}k`, outputPath);
-      } else if (options.format === "wav") {
-        args.push("-vn", outputPath);
-      } else {
-        args.push("-vn", "-b:a", `${options.audioBitrate || "192"}k`, outputPath);
-      }
-    } else {
-      args.push("-c", "copy", outputPath);
-    }
-
-    try {
-      await this.runFfmpegProcess(ffmpegBinary, args);
-    } catch (err: unknown) {
-      if (!isAudio && options.format === "mp4") {
-        this.logger.warn("FFmpeg stream copy failed. Retrying with libx264/aac transcode...", {
-          error: String(err),
-        });
-        const fallbackArgs = [
-          "-y",
-          "-user_agent",
-          BROWSER_USER_AGENT,
-          "-i",
-          streamUrl,
-          "-c:v",
-          "libx264",
-          "-preset",
-          "veryfast",
-          "-crf",
-          "23",
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
-          outputPath,
-        ];
-        await this.runFfmpegProcess(ffmpegBinary, fallbackArgs);
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  private runFfmpegProcess(ffmpegBinary: string, args: string[]): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const proc = spawn(ffmpegBinary, args);
-      let stderr = "";
-
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new AppError(`FFmpeg failed with exit code ${code}: ${stderr.slice(-300)}`));
-        }
-      });
-
-      proc.on("error", (err) => {
-        reject(new AppError(`Could not launch FFmpeg: ${err.message}`));
-      });
-    });
-  }
-
-  private async downloadDirectStream(streamUrl: string, outputPath: string): Promise<void> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
-    try {
-      const res = await fetch(streamUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": BROWSER_USER_AGENT,
-          Accept: "*/*",
-        },
-      });
-
-      if (!res.ok) {
-        throw new AppError(`Direct stream download failed (HTTP ${res.status})`);
-      }
-      if (!res.body) {
-        throw new AppError("No response body received from stream source.");
-      }
-
-      const fileStream = fs.createWriteStream(outputPath);
-      await pipeline(Readable.fromWeb(res.body as any), fileStream);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  private async executeDownload(options: DownloadOptions, clientStrategy?: string): Promise<DownloadResult> {
     const binary = await this.ensureBinary();
     const ffmpegBinary = await this.ensureFfmpegBinary();
     const isAudio = AUDIO_FORMATS.includes(options.format);
@@ -1165,7 +359,7 @@ export class YtDlpDownloader implements IDownloaderService {
     const outputTemplate = path.join(this.tempDir, `${uniquePrefix}_%(title).100B.%(ext)s`);
 
     const args: string[] = [
-      ...this.buildBaseArgs(clientStrategy),
+      ...this.buildBaseArgs(),
       "-o",
       outputTemplate,
     ];
@@ -1200,10 +394,10 @@ export class YtDlpDownloader implements IDownloaderService {
 
     args.push(options.url);
 
-    this.logger.info(`Starting download for: ${options.url} (Format: ${options.format}, Strategy: ${clientStrategy})`);
+    this.logger.info(`Starting download for: ${options.url} (Format: ${options.format})`);
 
     return new Promise((resolve, reject) => {
-      const proc = spawn(binary, args, { env: this.getProcessEnv() });
+      const proc = spawn(binary, args);
       let stderr = "";
 
       proc.stdout.on("data", (chunk: Buffer) => {
