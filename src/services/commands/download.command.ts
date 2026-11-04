@@ -173,8 +173,12 @@ export class DownloadCommand implements ICommandHandler {
                 inline_keyboard: [
                   [
                     {
-                      text: `📥 Download (${sizeMb} MB)`,
+                      text: `▶️ Stream Video (${sizeMb} MB)`,
                       url: downloadUrl,
+                    },
+                    {
+                      text: `📥 Download File`,
+                      url: `${downloadUrl}?dl=1`,
                     },
                   ],
                 ],

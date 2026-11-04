@@ -198,21 +198,59 @@ export class FileServerService implements IFileServerService {
       return;
     }
 
-    // Standard HTTP security headers
+    // Standard HTTP security headers (nosniff enabled; CSP relaxed for native media streaming in Safari)
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Content-Security-Policy", "default-src 'none'");
+    res.setHeader("Accept-Ranges", "bytes");
 
     const fileSizeBytes = entry.fileSizeBytes;
+    const isDownload = parsedUrl.searchParams.get("dl") === "1" || parsedUrl.searchParams.get("download") === "1";
+    const dispositionType = isDownload ? "attachment" : "inline";
+    const contentDisposition = `${dispositionType}; filename*=UTF-8''${encodeURIComponent(entry.filename)}`;
+
     const rangeHeader = req.headers.range;
 
-    // Support HTTP Range requests (HTTP 206 Partial Content) for resumable downloads & media seeking
-    if (rangeHeader) {
-      const parts = rangeHeader.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSizeBytes - 1;
+    // Support HTTP Range requests (HTTP 206 Partial Content) strictly required by Safari & iOS
+    let start = 0;
+    let end = fileSizeBytes - 1;
+    let isRange = false;
 
-      if (isNaN(start) || start >= fileSizeBytes || end >= fileSizeBytes || start > end) {
+    if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+      isRange = true;
+      const rawRange = rangeHeader.substring(6).trim();
+      const hyphenIdx = rawRange.indexOf("-");
+
+      if (hyphenIdx !== -1) {
+        const startStr = rawRange.substring(0, hyphenIdx).trim();
+        const endStr = rawRange.substring(hyphenIdx + 1).trim();
+
+        if (startStr === "" && endStr !== "") {
+          // Suffix range (e.g. bytes=-500000: last 500 KB, common in Safari to locate moov atom)
+          const suffix = parseInt(endStr, 10);
+          if (!isNaN(suffix) && suffix > 0) {
+            start = Math.max(0, fileSizeBytes - suffix);
+            end = fileSizeBytes - 1;
+          }
+        } else if (startStr !== "" && endStr === "") {
+          // Open-ended range (e.g. bytes=1024-)
+          const s = parseInt(startStr, 10);
+          if (!isNaN(s)) {
+            start = Math.min(s, fileSizeBytes - 1);
+            end = fileSizeBytes - 1;
+          }
+        } else if (startStr !== "" && endStr !== "") {
+          // Explicit chunk range (e.g. bytes=0-1 probe from Safari)
+          const s = parseInt(startStr, 10);
+          const e = parseInt(endStr, 10);
+          if (!isNaN(s) && !isNaN(e)) {
+            start = s;
+            end = Math.min(e, fileSizeBytes - 1);
+          }
+        }
+      }
+    }
+
+    if (isRange) {
+      if (start >= fileSizeBytes || start > end || start < 0) {
         res.writeHead(416, {
           "Content-Range": `bytes */${fileSizeBytes}`,
         });
@@ -228,7 +266,8 @@ export class FileServerService implements IFileServerService {
         "Accept-Ranges": "bytes",
         "Content-Length": chunkSize,
         "Content-Type": entry.mimeType,
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(entry.filename)}`,
+        "Content-Disposition": contentDisposition,
+        "Cache-Control": "public, max-age=3600",
       });
 
       fileStream.pipe(res);
@@ -241,7 +280,8 @@ export class FileServerService implements IFileServerService {
         "Content-Length": fileSizeBytes,
         "Accept-Ranges": "bytes",
         "Content-Type": entry.mimeType,
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(entry.filename)}`,
+        "Content-Disposition": contentDisposition,
+        "Cache-Control": "public, max-age=3600",
       });
 
       const fileStream = fs.createReadStream(entry.filePath);
