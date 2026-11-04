@@ -57,18 +57,6 @@ src/
 
 ---
 
-## ✨ Features
-
-- **Slash Command Menu Popup**: Auto-registers commands using Telegram's `setMyCommands` and `setChatMenuButton` APIs so typing `/` or opening the Menu button presents the nullptr command list.
-- **Resilient Real-Time Streaming**: Streams LLM token responses with debounced updates to prevent Telegram 429 rate limits, with dynamic exponential backoff.
-- **Typing Indicator**: Shows chat action `"typing"` while nullptr is thinking.
-- **Smart Message Splitting**: Splits long responses exceeding 4096 characters cleanly along paragraph and word boundaries.
-- **Model Switching**: Query installed models (`/models`) and switch models dynamically (`/model <name>`).
-- **Authorization Guard**: Restricts access to authorized Telegram user IDs (`ALLOWED_USER_ID` or comma-separated `ALLOWED_USER_IDS`).
-- **Oracle Cloud Health Check**: `/status` tests round-trip latency to your Oracle Cloud host.
-
----
-
 ## 📋 Available Commands in nullptr
 
 | Command | Description |
