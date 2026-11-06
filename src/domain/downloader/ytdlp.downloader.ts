@@ -10,19 +10,27 @@ import {
   DownloadResult,
   MediaFormat,
   MediaQuality,
+  VideoResolutionOption,
 } from "@/domain/downloader/downloader.types";
 import { ILogger } from "@/core/logger/logger.interface";
 import { AppError } from "@/core/errors/app-error";
 
-const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav"];
+const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
-  best: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-  "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio/best[ext=mp4]/best",
-  "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480][ext=mp4]+bestaudio/best[ext=mp4]/best",
-  "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-  "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-  audio: "bestaudio/best",
+  best: "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440][ext=mp4]+bestaudio/best[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
+  "8k": "bestvideo[height<=4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160][ext=mp4]+bestaudio/best[ext=mp4]",
+  "4k": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440][ext=mp4]+bestaudio/bestvideo[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
+  "2160p": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440][ext=mp4]+bestaudio/bestvideo[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
+  "1440p": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio/bestvideo[height<=720][ext=mp4]+bestaudio/best[ext=mp4]",
+  "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio/bestvideo[height<=480][ext=mp4]+bestaudio/best[ext=mp4]",
+  "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480][ext=mp4]+bestaudio/best[ext=mp4]",
+  "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360][ext=mp4]+bestaudio/best[ext=mp4]",
+  "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+  "240p": "bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=144][ext=mp4]+bestaudio/best[ext=mp4]",
+  "144p": "bestvideo[height<=144][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+  audio: "bestaudio",
+  unknown: "best[ext=mp4]/best",
 };
 
 export class YtDlpDownloader implements IDownloaderService {
@@ -330,6 +338,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
         try {
           const data = JSON.parse(stdout);
+          const availableVideoQualities = this.extractAvailableQualities(data);
           const info: MediaInfo = {
             id: data.id || String(Date.now()),
             title: data.title || "Untitled Media",
@@ -338,6 +347,7 @@ export class YtDlpDownloader implements IDownloaderService {
             thumbnail: data.thumbnail,
             url,
             approxFilesize: data.filesize || data.filesize_approx,
+            availableVideoQualities,
           };
           resolve(info);
         } catch (err: unknown) {
@@ -349,6 +359,124 @@ export class YtDlpDownloader implements IDownloaderService {
         reject(new AppError(`Could not launch yt-dlp: ${err.message}`));
       });
     });
+  }
+
+  /**
+   * Resolves quality type using main dimension threshold (widescreen width or portrait height),
+   * mirroring tubesnag-desktop's resolveQualityByResolution.
+   */
+  public resolveQualityByResolution(w?: number, h?: number): MediaQuality | null {
+    if (!w && !h) return null;
+    const mainDim = Math.max(w || 0, h || 0);
+
+    if (mainDim >= 7680) return "8k";
+    if (mainDim >= 3840) return "4k";
+    if (mainDim >= 2560) return "1440p";
+    if (mainDim >= 1920) return "1080p";
+    if (mainDim >= 1280) return "720p";
+    if (mainDim >= 854) return "480p";
+    if (mainDim >= 640) return "360p";
+    if (mainDim >= 426) return "240p";
+    if (mainDim >= 256) return "144p";
+
+    return null;
+  }
+
+  private extractAvailableQualities(data: any): VideoResolutionOption[] {
+    const ORDERED_QUALITIES: Array<{ quality: MediaQuality; label: string; minDim: number }> = [
+      { quality: "8k", label: "8K Ultra HD", minDim: 7680 },
+      { quality: "4k", label: "4K (2160p)", minDim: 3840 },
+      { quality: "1440p", label: "2K (1440p)", minDim: 2560 },
+      { quality: "1080p", label: "1080p FHD", minDim: 1920 },
+      { quality: "720p", label: "720p HD", minDim: 1280 },
+      { quality: "480p", label: "480p SD", minDim: 854 },
+      { quality: "360p", label: "360p", minDim: 640 },
+      { quality: "240p", label: "240p", minDim: 426 },
+      { quality: "144p", label: "144p", minDim: 256 },
+    ];
+
+    if (!data || !Array.isArray(data.formats) || data.formats.length === 0) {
+      return [
+        { quality: "1080p", label: "1080p FHD" },
+        { quality: "720p", label: "720p HD" },
+        { quality: "480p", label: "480p SD" },
+        { quality: "360p", label: "360p" },
+      ];
+    }
+
+    // Audio stream approximate size
+    const audioStream = data.formats.find(
+      (f: any) => f.vcodec === "none" && f.acodec !== "none" && (f.filesize || f.filesize_approx)
+    );
+    const audioSize = audioStream
+      ? (audioStream.filesize || audioStream.filesize_approx || 0)
+      : (data.duration ? Math.round((128 * 1000 / 8) * data.duration) : 0);
+
+    const videoFormats: any[] = data.formats.filter(
+      (f: any) => f.vcodec !== "none" && (typeof f.height === "number" || typeof f.width === "number")
+    );
+
+    if (videoFormats.length === 0) {
+      return [
+        { quality: "720p", label: "720p HD" },
+        { quality: "480p", label: "480p SD" },
+      ];
+    }
+
+    const maxDim = Math.max(...videoFormats.map((f: any) => Math.max(f.width || 0, f.height || 0)));
+    const results: VideoResolutionOption[] = [];
+
+    for (const item of ORDERED_QUALITIES) {
+      const matches = videoFormats.filter((f: any) => {
+        const q = this.resolveQualityByResolution(f.width, f.height);
+        return q === item.quality;
+      });
+
+      if (matches.length === 0 && maxDim < item.minDim) {
+        continue;
+      }
+
+      let approxSizeBytes: number | undefined;
+
+      if (matches.length > 0) {
+        const bestMatch = matches.find((f: any) => f.ext === "mp4") || matches[0];
+        const vSize = bestMatch.filesize || bestMatch.filesize_approx ||
+          (bestMatch.tbr && data.duration ? Math.round((bestMatch.tbr * 1000 / 8) * data.duration) : undefined);
+
+        if (vSize) {
+          approxSizeBytes = bestMatch.acodec === "none" ? vSize + audioSize : vSize;
+        }
+      }
+
+      if (!approxSizeBytes && data.duration) {
+        const estimatedBitrates: Record<string, number> = {
+          "8k": 25000,
+          "4k": 12000,
+          "1440p": 6000,
+          "1080p": 3000,
+          "720p": 1500,
+          "480p": 800,
+          "360p": 500,
+          "240p": 300,
+          "144p": 150,
+        };
+        const br = estimatedBitrates[item.quality] || 1000;
+        approxSizeBytes = Math.round((br * 1000 / 8) * data.duration);
+      }
+
+      results.push({
+        quality: item.quality,
+        label: item.label,
+        approxSizeBytes,
+      });
+    }
+
+    return results.length > 0 ? results : [
+      { quality: "1080p", label: "1080p FHD" },
+      { quality: "720p", label: "720p HD" },
+      { quality: "480p", label: "480p SD" },
+      { quality: "360p", label: "360p" },
+    ];
   }
 
   public async download(options: DownloadOptions): Promise<DownloadResult> {
@@ -384,7 +512,10 @@ export class YtDlpDownloader implements IDownloaderService {
       );
     } else {
       const quality = options.quality || "best";
-      const formatStr = QUALITY_MAP[quality] || QUALITY_MAP.best;
+      let formatStr = QUALITY_MAP[quality] || QUALITY_MAP.best;
+      if (options.format !== "mp4") {
+        formatStr = formatStr.replaceAll("mp4", options.format);
+      }
       args.push("-f", formatStr);
 
       if (options.format !== "mp4") {

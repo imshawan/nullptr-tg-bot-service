@@ -1,21 +1,16 @@
 import fs from "node:fs/promises";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
-import { MediaFormat, MediaQuality } from "@/domain/downloader/downloader.types";
+import { MediaFormat, MediaQuality, AudioBitrate } from "@/domain/downloader/downloader.types";
 import { InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
-import { formatDuration, isTelegramButtonUrl } from "@/utils/text.utils";
+import { isTelegramButtonUrl } from "@/utils/text.utils";
+import {
+  createDownloadSession,
+  buildMainMenu,
+  pendingDownloadSessions,
+} from "@/services/downloader/downloader-ui.helper";
 
-// In-memory cache for pending interactive download selections: token -> URL
-export const pendingDownloadUrls = new Map<string, { url: string; title: string; createdAt: number }>();
-
-// Cleanup stale tokens older than 30 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of pendingDownloadUrls.entries()) {
-    if (now - val.createdAt > 30 * 60 * 1000) {
-      pendingDownloadUrls.delete(key);
-    }
-  }
-}, 10 * 60 * 1000).unref();
+// Export for backward compatibility across modules
+export const pendingDownloadUrls = pendingDownloadSessions;
 
 export class DownloadCommand implements ICommandHandler {
   public readonly command = "download";
@@ -31,10 +26,10 @@ export class DownloadCommand implements ICommandHandler {
         "",
         "Usage: `/download <url> [format]` (or `/dl <url>`)",
         "",
-        "• *Audio formats:* `mp3`, `m4a`",
-        "• *Video qualities:* `best`, `720p`, `480p`",
+        "• *Audio formats:* `mp3`, `m4a`, `flac`, `wav`, `opus`, `aac`",
+        "• *Video qualities:* `best`, `8k`, `4k`, `2160p`, `1440p`, `1080p`, `720p`, `480p`, `360p`, `240p`, `144p`",
         "",
-        "💡 _Tip: You can also simply paste any video link in chat to open the interactive format selector!_",
+        "💡 _Tip: You can also simply paste any video link in chat to open the interactive format & quality selector!_",
       ].join("\n");
 
       await ctx.telegram.sendMessage({
@@ -56,61 +51,34 @@ export class DownloadCommand implements ICommandHandler {
 
     const formatArg = ctx.args[1]?.toLowerCase();
 
-    // If explicit format requested (e.g. /dl <url> mp3)
+    // If explicit format requested (e.g. /dl <url> mp3 or /dl <url> 1080p)
     if (formatArg) {
       await this.handleDirectDownload(ctx, url, formatArg);
       return;
     }
 
-    // Otherwise, fetch info and display interactive format picker
+    // Otherwise, fetch info and display interactive hierarchical menu
     await this.showInteractiveFormatPicker(ctx, url);
   }
 
   private async showInteractiveFormatPicker(ctx: CommandContext, url: string): Promise<void> {
     const initMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: "🔍 *nullptr* is inspecting link metadata...",
+      text: "🔍 *nullptr* is inspecting link metadata & available qualities...",
       parse_mode: "Markdown",
     });
 
     try {
       const info = await ctx.downloader.getMediaInfo(url);
-      const token = Math.random().toString(36).substring(2, 10);
-      pendingDownloadUrls.set(token, { url, title: info.title, createdAt: Date.now() });
-
-      const durationStr = info.duration ? ` · ⏱️ ${formatDuration(info.duration)}` : "";
-      const uploaderStr = info.uploader ? ` · 👤 ${info.uploader}` : "";
-
-      const text = [
-        `🎬 *${info.title}*`,
-        `${durationStr}${uploaderStr}`,
-        "",
-        "Choose your desired download format:",
-      ].join("\n");
-
-      const keyboard: InlineKeyboardMarkup = {
-        inline_keyboard: [
-          [
-            { text: "🎵 Audio (MP3 320k)", callback_data: `dl:mp3:audio:${token}` },
-            { text: "🎵 Audio (M4A)", callback_data: `dl:m4a:audio:${token}` },
-          ],
-          [
-            { text: "🎬 Video (Best MP4)", callback_data: `dl:mp4:best:${token}` },
-            { text: "🎬 Video (720p)", callback_data: `dl:mp4:720p:${token}` },
-          ],
-          [
-            { text: "🎬 Video (480p)", callback_data: `dl:mp4:480p:${token}` },
-            { text: "❌ Cancel", callback_data: `dl:cancel:none:${token}` },
-          ],
-        ],
-      };
+      const session = createDownloadSession(info);
+      const { text, replyMarkup } = buildMainMenu(session);
 
       await ctx.telegram.editMessageText({
         chat_id: ctx.chatId,
         message_id: initMsg.message_id,
         text,
         parse_mode: "Markdown",
-        reply_markup: keyboard,
+        reply_markup: replyMarkup,
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -125,18 +93,38 @@ export class DownloadCommand implements ICommandHandler {
   private async handleDirectDownload(ctx: CommandContext, url: string, formatArg: string): Promise<void> {
     let format: MediaFormat = "mp4";
     let quality: MediaQuality = "best";
+    let audioBitrate: AudioBitrate = "320";
 
-    if (["mp3", "m4a", "wav"].includes(formatArg)) {
+    const audioFormats: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
+    const videoQualities: MediaQuality[] = [
+      "best",
+      "8k",
+      "4k",
+      "2160p",
+      "1440p",
+      "1080p",
+      "720p",
+      "480p",
+      "360p",
+      "240p",
+      "144p",
+    ];
+
+    if (audioFormats.includes(formatArg as MediaFormat)) {
       format = formatArg as MediaFormat;
       quality = "audio";
-    } else if (["720p", "480p", "360p", "1080p", "best"].includes(formatArg)) {
+      audioBitrate = "320";
+    } else if (videoQualities.includes(formatArg as MediaQuality)) {
       format = "mp4";
       quality = formatArg as MediaQuality;
+    } else if (["webm", "mkv"].includes(formatArg)) {
+      format = formatArg as MediaFormat;
+      quality = "best";
     }
 
     const progressMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: `⏳ *nullptr* is downloading (${format.toUpperCase()})...`,
+      text: `⏳ *nullptr* is downloading (${format.toUpperCase()} ${quality !== "audio" ? quality : "320k"})...`,
       parse_mode: "Markdown",
     });
 
@@ -145,6 +133,7 @@ export class DownloadCommand implements ICommandHandler {
         url,
         format,
         quality,
+        audioBitrate,
       });
 
       const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
@@ -218,7 +207,7 @@ export class DownloadCommand implements ICommandHandler {
         await ctx.telegram.editMessageText({
           chat_id: ctx.chatId,
           message_id: progressMsg.message_id,
-          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution (e.g. 480p).`,
+          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution (e.g. 720p or 480p).`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});

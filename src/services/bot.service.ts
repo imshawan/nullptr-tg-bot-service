@@ -3,14 +3,20 @@ import { ITelegramClient } from "@/domain/telegram/telegram-client.interface";
 import { ILlmProvider, ChatMessage } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
 import { IDownloaderService } from "@/domain/downloader/downloader.interface";
-import { MediaFormat, MediaQuality } from "@/domain/downloader/downloader.types";
+import { MediaFormat, MediaQuality, AudioBitrate } from "@/domain/downloader/downloader.types";
 import { IFileServerService } from "@/services/file-server/file-server.interface";
 import { CommandRegistry } from "@/services/command.registry";
 import { ILogger } from "@/core/logger/logger.interface";
 import { TelegramUpdate, TelegramCallbackQuery, InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
-import { splitMessageText, formatDuration, isTelegramButtonUrl } from "@/utils/text.utils";
+import { splitMessageText, isTelegramButtonUrl } from "@/utils/text.utils";
 import { TelegramApiError } from "@/core/errors/app-error";
-import { pendingDownloadUrls } from "@/services/commands/download.command";
+import {
+  createDownloadSession,
+  buildMainMenu,
+  buildVideoMenu,
+  buildAudioMenu,
+  pendingDownloadSessions,
+} from "@/services/downloader/downloader-ui.helper";
 
 export interface BotServiceConfig {
   allowedUserIds: Set<number>;
@@ -170,48 +176,21 @@ export class BotService {
   private async handleDirectUrlSubmission(chatId: number, url: string): Promise<void> {
     const initMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: "🔍 *nullptr* detected media link. Fetching details...",
+      text: "🔍 *nullptr* detected media link. Fetching details & qualities...",
       parse_mode: "Markdown",
     });
 
     try {
       const info = await this.downloader.getMediaInfo(url);
-      const token = Math.random().toString(36).substring(2, 10);
-      pendingDownloadUrls.set(token, { url, title: info.title, createdAt: Date.now() });
-
-      const durationStr = info.duration ? ` · ⏱️ ${formatDuration(info.duration)}` : "";
-      const uploaderStr = info.uploader ? ` · 👤 ${info.uploader}` : "";
-
-      const text = [
-        `🎬 *${info.title}*`,
-        `${durationStr}${uploaderStr}`,
-        "",
-        "Choose your desired download format:",
-      ].join("\n");
-
-      const keyboard: InlineKeyboardMarkup = {
-        inline_keyboard: [
-          [
-            { text: "🎵 Audio (MP3 320k)", callback_data: `dl:mp3:audio:${token}` },
-            { text: "🎵 Audio (M4A)", callback_data: `dl:m4a:audio:${token}` },
-          ],
-          [
-            { text: "🎬 Video (Best MP4)", callback_data: `dl:mp4:best:${token}` },
-            { text: "🎬 Video (720p)", callback_data: `dl:mp4:720p:${token}` },
-          ],
-          [
-            { text: "🎬 Video (480p)", callback_data: `dl:mp4:480p:${token}` },
-            { text: "❌ Cancel", callback_data: `dl:cancel:none:${token}` },
-          ],
-        ],
-      };
+      const session = createDownloadSession(info);
+      const { text, replyMarkup } = buildMainMenu(session);
 
       await this.telegram.editMessageText({
         chat_id: chatId,
         message_id: initMsg.message_id,
         text,
         parse_mode: "Markdown",
-        reply_markup: keyboard,
+        reply_markup: replyMarkup,
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -224,7 +203,7 @@ export class BotService {
   }
 
   /**
-   * Handles user tapping an Inline Keyboard button (e.g. format choice)
+   * Handles user tapping an Inline Keyboard button (e.g. format choice, drilldown menu, back, cancel)
    */
   private async handleCallbackQuery(query: TelegramCallbackQuery): Promise<void> {
     const data = query.data;
@@ -235,14 +214,16 @@ export class BotService {
       text: "nullptr is processing your request...",
     });
 
-    const [_, format, quality, token] = data.split(":");
+    const parts = data.split(":");
     const chatId = query.message?.chat.id;
     const messageId = query.message?.message_id;
 
     if (!chatId || !messageId) return;
 
-    if (format === "cancel") {
-      pendingDownloadUrls.delete(token);
+    // 1. Cancel action: dl:cancel:none:${token}
+    if (parts[1] === "cancel") {
+      const token = parts[3];
+      if (token) pendingDownloadSessions.delete(token);
       await this.telegram.editMessageText({
         chat_id: chatId,
         message_id: messageId,
@@ -251,8 +232,163 @@ export class BotService {
       return;
     }
 
-    const pending = pendingDownloadUrls.get(token);
-    if (!pending) {
+    // 2. Back action: dl:back:${token}
+    if (parts[1] === "back") {
+      const token = parts[2];
+      const session = pendingDownloadSessions.get(token);
+      if (!session) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: "⚠️ Download session expired. Please send the link again.",
+        });
+        return;
+      }
+      const { text, replyMarkup } = buildMainMenu(session);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: replyMarkup,
+      });
+      return;
+    }
+
+    // 3. Video drilldown menu: dl:v_menu:${token}
+    if (parts[1] === "v_menu") {
+      const token = parts[2];
+      const session = pendingDownloadSessions.get(token);
+      if (!session) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: "⚠️ Download session expired. Please send the link again.",
+        });
+        return;
+      }
+      const { text, replyMarkup } = buildVideoMenu(session);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: replyMarkup,
+      });
+      return;
+    }
+
+    // 4. Audio drilldown menu: dl:a_menu:${token}
+    if (parts[1] === "a_menu") {
+      const token = parts[2];
+      const session = pendingDownloadSessions.get(token);
+      if (!session) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: "⚠️ Download session expired. Please send the link again.",
+        });
+        return;
+      }
+      const { text, replyMarkup } = buildAudioMenu(session);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: replyMarkup,
+      });
+      return;
+    }
+
+    // 5. Video format switch: dl:v_fmt:${format}:${token}
+    if (parts[1] === "v_fmt") {
+      const format = parts[2] as "mp4" | "mkv" | "webm";
+      const token = parts[3];
+      const session = pendingDownloadSessions.get(token);
+      if (!session) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: "⚠️ Download session expired. Please send the link again.",
+        });
+        return;
+      }
+      session.selectedVideoFormat = format;
+      const { text, replyMarkup } = buildVideoMenu(session);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: replyMarkup,
+      });
+      return;
+    }
+
+    // 6. Audio format switch: dl:a_fmt:${format}:${token}
+    if (parts[1] === "a_fmt") {
+      const format = parts[2] as any;
+      const token = parts[3];
+      const session = pendingDownloadSessions.get(token);
+      if (!session) {
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: "⚠️ Download session expired. Please send the link again.",
+        });
+        return;
+      }
+      session.selectedAudioFormat = format;
+      const { text, replyMarkup } = buildAudioMenu(session);
+      await this.telegram.editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: replyMarkup,
+      });
+      return;
+    }
+
+    // 7. Download execution triggers
+    let format: MediaFormat = "mp4";
+    let quality: MediaQuality = "best";
+    let audioBitrate: AudioBitrate | undefined = undefined;
+    let token = "";
+
+    if (parts[1] === "q" && parts[2] === "v") {
+      // dl:q:v:${token} -> Quick Best MP4
+      token = parts[3];
+      format = "mp4";
+      quality = "best";
+    } else if (parts[1] === "q" && parts[2] === "a") {
+      // dl:q:a:${token} -> Quick MP3 320k
+      token = parts[3];
+      format = "mp3";
+      quality = "audio";
+      audioBitrate = "320";
+    } else if (parts[1] === "v_run") {
+      // dl:v_run:${format}:${quality}:${token}
+      format = parts[2] as MediaFormat;
+      quality = parts[3] as MediaQuality;
+      token = parts[4];
+    } else if (parts[1] === "a_run") {
+      // dl:a_run:${format}:${bitrate}:${token}
+      format = parts[2] as MediaFormat;
+      audioBitrate = (parts[3] === "lossless" ? undefined : parts[3]) as AudioBitrate;
+      quality = "audio";
+      token = parts[4];
+    } else {
+      // Backward compatibility: dl:${format}:${quality}:${token}
+      format = parts[1] as MediaFormat;
+      quality = parts[2] as MediaQuality;
+      token = parts[3];
+      if (quality === "audio") audioBitrate = "320";
+    }
+
+    const session = pendingDownloadSessions.get(token);
+    if (!session) {
       await this.telegram.editMessageText({
         chat_id: chatId,
         message_id: messageId,
@@ -261,19 +397,20 @@ export class BotService {
       return;
     }
 
-    // Update status message
+    const qualityLabel = quality !== "audio" ? ` · ${quality}` : audioBitrate ? ` · ${audioBitrate}k` : "";
     await this.telegram.editMessageText({
       chat_id: chatId,
       message_id: messageId,
-      text: `⏳ *nullptr* is downloading: *${pending.title}* (${format.toUpperCase()})...\nPlease wait.`,
+      text: `⏳ *nullptr* is downloading: *${session.title}* (${format.toUpperCase()}${qualityLabel})...\nPlease wait.`,
       parse_mode: "Markdown",
     });
 
     try {
       const result = await this.downloader.download({
-        url: pending.url,
-        format: format as MediaFormat,
-        quality: quality as MediaQuality,
+        url: session.url,
+        format,
+        quality,
+        audioBitrate,
       });
 
       const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
@@ -342,18 +479,18 @@ export class BotService {
               ].join("\n"),
             });
           }
-          pendingDownloadUrls.delete(token);
+          pendingDownloadSessions.delete(token);
           return;
         }
 
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: messageId,
-          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution like 480p!`,
+          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution like 720p or 480p!`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
-        pendingDownloadUrls.delete(token);
+        pendingDownloadSessions.delete(token);
         return;
       }
 
@@ -385,7 +522,7 @@ export class BotService {
       }
 
       await fs.unlink(result.filePath).catch(() => {});
-      pendingDownloadUrls.delete(token);
+      pendingDownloadSessions.delete(token);
 
       await this.telegram.editMessageText({
         chat_id: chatId,
