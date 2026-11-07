@@ -3,13 +3,17 @@ export interface BrandHeaderProps {
   isError?: boolean;
 }
 
-export function BrandHeader({ badgeText = "Live Stream & Download", isError = false }: BrandHeaderProps) {
+export function BrandHeader({ badgeText = "Media Ready", isError = false }: BrandHeaderProps) {
   return (
     <div class="card-header">
-      <div class="brand">
-        <span>🤖 nullptr</span>
+      <div class="brand-badge">
+        <div class="brand-icon">&gt;_</div>
+        <span>nullptr</span>
       </div>
-      <span class={`badge ${isError ? "badge-danger" : ""}`}>{badgeText}</span>
+      <div class={`status-pill ${isError ? "error" : ""}`}>
+        <span class="status-dot"></span>
+        <span>{badgeText}</span>
+      </div>
     </div>
   );
 }

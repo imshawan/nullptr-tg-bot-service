@@ -33,8 +33,8 @@ export function PlayerView({
 
   return (
     <MainLayout title={`${title} - nullptr`}>
-      <div class="card">
-        <BrandHeader badgeText="Live Stream & Download" />
+      <div class="media-card">
+        <BrandHeader badgeText={isAudio ? "Audio Ready" : "Video Ready"} />
         <MediaBox isAudio={isAudio} streamUrl={streamUrl} mimeType={mimeType} />
         <div class="card-body">
           <MetaInfo
@@ -48,6 +48,7 @@ export function PlayerView({
             filename={filename}
             sizeMb={sizeMb}
             streamUrl={streamUrl}
+            isAudio={isAudio}
           />
         </div>
       </div>
