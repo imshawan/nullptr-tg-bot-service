@@ -36,7 +36,10 @@ This skill guides agents and LLMs on maintaining the architectural integrity of 
    - `file-server/`: `IFileServerService` interface and `FileServerService` (HTTP server providing HTML5 web player streaming, HTTP 206 range requests, and direct downloads).
    - `bot.service.ts`: Update loop, typing indicator, throttled streaming, rate limit backoff, link detection, and delivery routing.
 
-5. **`src/index.ts`**:
+5. **`src/views/`**:
+   - Server-Side Rendered (SSR) Preact TSX presentation components (`layouts/`, `components/`, `player.view.tsx`, `error.view.tsx`).
+
+6. **`src/index.ts`**:
    - Pure Composition Root / Dependency Injection. Wires components together and handles OS signals (`SIGINT`, `SIGTERM`).
 
 ---

@@ -71,7 +71,9 @@ This document contains critical architectural rules, conventions, and constraint
    - `services/downloader/`: `downloader-ui.helper.ts` (2-step hierarchical format/quality drilldown & session caching).
    - `services/file-server/`: `IFileServerService` interface and `FileServerService` (HTTP server for video streaming player & direct downloads).
    - `services/bot.service.ts`: Long-polling loop, message streaming, rate-limit backoff, link detection, and delivery routing.
-5. **`src/index.ts` (Composition Root)**:
+5. **`src/views/` (SSR Presentation Layer)**:
+   - Holds Preact TSX components (layouts, media players, meta tags, action buttons, error cards) rendered server-side to HTML strings via `preact-render-to-string`.
+6. **`src/index.ts` (Composition Root)**:
    - Pure Dependency Injection: instantiates configuration, logger, clients, providers, stores, command handlers, and orchestrator.
 
 ---

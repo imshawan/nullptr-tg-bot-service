@@ -52,6 +52,11 @@ src/
 │   │   └── file-server.service.ts          # HTTP streaming server & HTML5 web player
 │   ├── command.registry.ts                 # Command dispatcher & Telegram menu mapper
 │   └── bot.service.ts                      # Updates, streaming, link detection, callbacks & delivery
+├── views/                                  # Server-Side Rendered (SSR) Preact TSX Components
+│   ├── layouts/                            # HTML document & responsive theme layouts
+│   ├── components/                         # Header, MediaBox, MetaInfo, Actions, Footer
+│   ├── player.view.tsx                     # Streaming web player page template
+│   └── error.view.tsx                      # 404, 410, 403 error page templates
 ├── utils/                                  # Utilities
 │   └── text.utils.ts                       # Message chunking, button URL checks & duration formatting
 └── index.ts                                # Composition Root / Dependency Injection
