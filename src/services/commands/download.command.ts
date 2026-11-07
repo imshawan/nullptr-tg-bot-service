@@ -151,9 +151,6 @@ export class DownloadCommand implements ICommandHandler {
             `🎬 *${result.title}*`,
             `📦 File Size: *${sizeMb} MB*`,
             "",
-            ...(result.fileSizeBytes > 50 * 1024 * 1024
-              ? [`ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`]
-              : []),
             `🚀 *High-Speed Streaming & Direct Download:*`,
             `• ▶️ *Stream & Watch:* [Open Web Player](${downloadUrl})`,
             `• 📥 *Download / Save:* [Direct File Download](${downloadUrl}?dl=1)`,
@@ -196,9 +193,6 @@ export class DownloadCommand implements ICommandHandler {
                 `🎬 ${result.title}`,
                 `📦 File Size: ${sizeMb} MB`,
                 "",
-                ...(result.fileSizeBytes > 50 * 1024 * 1024
-                  ? [`ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`]
-                  : []),
                 `🚀 High-Speed Streaming & Direct Download:`,
                 `▶️ Stream & Watch: ${downloadUrl}`,
                 `📥 Direct Download: ${downloadUrl}?dl=1`,
