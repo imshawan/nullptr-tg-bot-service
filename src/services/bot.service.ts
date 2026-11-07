@@ -415,7 +415,8 @@ export class BotService {
 
       const sizeMb = (result.fileSizeBytes / (1024 * 1024)).toFixed(1);
 
-      if (result.fileSizeBytes > 50 * 1024 * 1024) {
+      if (!result.isAudio) {
+        // Videos are served strictly via the HTTP File Server (never uploaded directly to Telegram chat)
         if (this.fileServer && this.fileServer.isReady()) {
           const downloadUrl = await this.fileServer.registerDownload(
             result.filePath,
@@ -427,7 +428,9 @@ export class BotService {
             `🎬 *${result.title}*`,
             `📦 File Size: *${sizeMb} MB*`,
             "",
-            `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
+            ...(result.fileSizeBytes > 50 * 1024 * 1024
+              ? [`ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`]
+              : []),
             `🚀 *High-Speed Streaming & Direct Download:*`,
             `• ▶️ *Stream & Watch:* [Open Web Player](${downloadUrl})`,
             `• 📥 *Download / Save:* [Direct File Download](${downloadUrl}?dl=1)`,
@@ -470,7 +473,9 @@ export class BotService {
                 `🎬 ${result.title}`,
                 `📦 File Size: ${sizeMb} MB`,
                 "",
-                `ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`,
+                ...(result.fileSizeBytes > 50 * 1024 * 1024
+                  ? [`ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`]
+                  : []),
                 `🚀 High-Speed Streaming & Direct Download:`,
                 `▶️ Stream & Watch: ${downloadUrl}`,
                 `📥 Direct Download: ${downloadUrl}?dl=1`,
@@ -486,7 +491,87 @@ export class BotService {
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: messageId,
-          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower video resolution like 720p or 480p!`,
+          text: `⚠️ [nullptr] File server is not running or unavailable. Videos cannot be served without the file server enabled.`,
+          parse_mode: "Markdown",
+        });
+        await fs.unlink(result.filePath).catch(() => {});
+        pendingDownloadSessions.delete(token);
+        return;
+      }
+
+      // Audio handling: uploads directly to Telegram when <= 50 MB; serves via fileServer when > 50 MB
+      if (result.fileSizeBytes > 50 * 1024 * 1024) {
+        if (this.fileServer && this.fileServer.isReady()) {
+          const downloadUrl = await this.fileServer.registerDownload(
+            result.filePath,
+            result.filename,
+            result.title
+          );
+
+          const text = [
+            `🎵 *${result.title}*`,
+            `📦 File Size: *${sizeMb} MB*`,
+            "",
+            `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,
+            `🚀 *High-Speed Streaming & Direct Download:*`,
+            `• ▶️ *Stream & Listen:* [Open Web Player](${downloadUrl})`,
+            `• 📥 *Download / Save:* [Direct File Download](${downloadUrl}?dl=1)`,
+            "",
+            `⏱️ _This link will remain active for 2 hours._`,
+          ].join("\n");
+
+          const canShowButton = isTelegramButtonUrl(downloadUrl);
+          const keyboard: InlineKeyboardMarkup | undefined = canShowButton
+            ? {
+                inline_keyboard: [
+                  [
+                    {
+                      text: `▶️ Stream & Listen`,
+                      url: downloadUrl,
+                    },
+                    {
+                      text: `📥 Download (${sizeMb} MB)`,
+                      url: `${downloadUrl}?dl=1`,
+                    },
+                  ],
+                ],
+              }
+            : undefined;
+
+          try {
+            await this.telegram.editMessageText({
+              chat_id: chatId,
+              message_id: messageId,
+              text,
+              parse_mode: "Markdown",
+              reply_markup: keyboard,
+            });
+          } catch (editErr: unknown) {
+            this.logger.warn(`Failed to send rich markdown message, falling back to plain text: ${String(editErr)}`);
+            await this.telegram.editMessageText({
+              chat_id: chatId,
+              message_id: messageId,
+              text: [
+                `🎵 ${result.title}`,
+                `📦 File Size: ${sizeMb} MB`,
+                "",
+                `ℹ️ File exceeds Telegram's 50 MB in-chat upload limit.`,
+                `🚀 High-Speed Streaming & Direct Download:`,
+                `▶️ Stream & Listen: ${downloadUrl}`,
+                `📥 Direct Download: ${downloadUrl}?dl=1`,
+                "",
+                `⏱️ This link will remain active for 2 hours.`,
+              ].join("\n"),
+            });
+          }
+          pendingDownloadSessions.delete(token);
+          return;
+        }
+
+        await this.telegram.editMessageText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting a lower audio bitrate like 128k or 192k!`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
@@ -501,25 +586,14 @@ export class BotService {
         parse_mode: "Markdown",
       });
 
-      if (result.isAudio) {
-        await this.telegram.sendChatAction(chatId, "upload_voice");
-        await this.telegram.sendAudio({
-          chat_id: chatId,
-          filePath: result.filePath,
-          title: result.title,
-          caption: `🎵 *${result.title}* via nullptr`,
-          parse_mode: "Markdown",
-        });
-      } else {
-        await this.telegram.sendChatAction(chatId, "upload_video");
-        await this.telegram.sendVideo({
-          chat_id: chatId,
-          filePath: result.filePath,
-          caption: `🎬 *${result.title}* via nullptr`,
-          parse_mode: "Markdown",
-          supports_streaming: true,
-        });
-      }
+      await this.telegram.sendChatAction(chatId, "upload_voice");
+      await this.telegram.sendAudio({
+        chat_id: chatId,
+        filePath: result.filePath,
+        title: result.title,
+        caption: `🎵 *${result.title}* via nullptr`,
+        parse_mode: "Markdown",
+      });
 
       await fs.unlink(result.filePath).catch(() => {});
       pendingDownloadSessions.delete(token);

@@ -1,6 +1,6 @@
 # nullptr (NullPointer Bot) — Enterprise Telegram LLM & Media Service
 
-**nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus media downloading (MP3, MP4, 720p, 480p) powered by `yt-dlp`.
+**nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus advanced media downloading (8K to 144p video, MP3/M4A/FLAC/WAV audio) powered by `yt-dlp` and a built-in HTTP streaming file server.
 
 ---
 
@@ -24,7 +24,7 @@ src/
 │   ├── downloader/                         # Media Downloader Subsystem (yt-dlp)
 │   │   ├── downloader.types.ts             # Formats, qualities & metadata interfaces
 │   │   ├── downloader.interface.ts         # IDownloaderService abstraction
-│   │   └── ytdlp.downloader.ts             # Binary resolver, metadata extractor & download runner
+│   │   └── ytdlp.downloader.ts             # Binary resolver, metadata extractor & tubesnag cascades
 │   ├── llm/
 │   │   ├── llm-provider.interface.ts       # ILlmProvider abstraction
 │   │   └── ollama.provider.ts              # Concrete Ollama provider (swappable)
@@ -45,10 +45,15 @@ src/
 │   │   ├── model.command.ts                # /model <name> switch
 │   │   ├── clear.command.ts                # /clear context
 │   │   └── status.command.ts               # /status latency & health
+│   ├── downloader/
+│   │   └── downloader-ui.helper.ts         # 2-step hierarchical drilldown menus & session cache
+│   ├── file-server/
+│   │   ├── file-server.interface.ts        # IFileServerService contract
+│   │   └── file-server.service.ts          # HTTP streaming server & HTML5 web player
 │   ├── command.registry.ts                 # Command dispatcher & Telegram menu mapper
-│   └── bot.service.ts                      # Updates, streaming, link detection & callbacks
+│   └── bot.service.ts                      # Updates, streaming, link detection, callbacks & delivery
 ├── utils/                                  # Utilities
-│   └── text.utils.ts                       # Message chunking & duration formatting
+│   └── text.utils.ts                       # Message chunking, button URL checks & duration formatting
 └── index.ts                                # Composition Root / Dependency Injection
 ```
 
@@ -56,12 +61,16 @@ src/
 
 ## ✨ Features
 
-- **Media Downloader (`yt-dlp`)**:
+- **Media Downloader (`yt-dlp` & `tubesnag-desktop` Engine)**:
   - Download from YouTube, Twitter/X, Instagram, TikTok, Soundcloud, Reddit, and 1000+ sites.
   - **Direct Link Detection**: Simply paste a link into chat to open an interactive format selector.
-  - **Interactive Inline Buttons**: Choose MP3 (320k), M4A, Best MP4, 720p, or 480p with a single tap.
-  - **Telegram 50MB Guard**: Detects files exceeding Telegram's 50MB Bot API upload limit and guides the user.
-  - **Pre-Bundled Multi-Platform & Multi-Architecture Binaries**: Pre-bundled standalone executables for both `yt-dlp` and `ffmpeg` across Windows (`bin/win32/`), Linux ARM64 / Oracle Cloud Ampere A1 (`bin/linux-arm64/`), Linux x86_64 (`bin/linux-x64/`), macOS Apple Silicon (`bin/darwin-arm64/`), and macOS Intel (`bin/darwin-x64/`) with zero runtime downloading.
+  - **2-Step Hierarchical Drilldown UX**: Clean main menu with 1-tap quick buttons (`⚡ Quick Best (MP4)` & `⚡ Quick MP3 (320k)`) plus drilldown submenus for `🎬 All Video Qualities` and `🎵 All Audio Formats & Bitrates`.
+  - **All Video Resolutions & Containers**: 8K, 4K (2160p), 1440p (2K), 1080p FHD, 720p HD, 480p SD, 360p, 240p, 144p across MP4, MKV, and WEBM containers.
+  - **Vertical Video & YouTube Shorts Optimization**: Resolves effective resolution via `Math.max(w, h)` to prevent vertical videos (e.g. 1080x1920) from downscaling.
+  - **Audio Formats & Bitrates**: MP3, M4A, FLAC, WAV, OPUS at 320 kbps, 256 kbps, 192 kbps, 128 kbps, or lossless.
+  - **Built-in HTTP File Server & Web Player**: **All video downloads are hosted exclusively via the built-in HTTP file server** (never uploaded into Telegram chat). Features an HTML5 web player with HTTP 206 Byte-Range streaming & scrub support, plus direct download links with automatic 2-hour TTL cleanup.
+  - **Telegram Audio Delivery**: Audio downloads $\le 50\text{ MB}$ are delivered directly into chat via `sendAudio`; files $> 50\text{ MB}$ route seamlessly to the HTTP file server.
+  - **Pre-Bundled Multi-Platform Binaries**: Pre-bundled standalone executables for both `yt-dlp` and `ffmpeg` across Windows (`bin/win32/`), Linux ARM64 / Oracle Cloud Ampere A1 (`bin/linux-arm64/`), Linux x86_64 (`bin/linux-x64/`), macOS Apple Silicon (`bin/darwin-arm64/`), and macOS Intel (`bin/darwin-x64/`) with zero runtime downloading.
 - **AI Streaming with Ollama (Oracle Cloud)**:
   - Real-time token streaming with debounced edits (1200ms) to prevent Telegram 429 rate limits.
   - Continuous "typing..." heartbeat while the model processes complex prompts.
@@ -81,7 +90,7 @@ src/
 |---|---|
 | `/start` | Welcome overview & bot status |
 | `/help` | Detailed command reference & guide |
-| `/download <url> [format]` | Download video (MP4/720p/480p) or audio (MP3/M4A) |
+| `/download <url> [format]` | Download video (8k/4k/1080p/720p/etc.) or audio (MP3/M4A/FLAC/etc.) |
 | `/models` | List installed Ollama models on Oracle Cloud |
 | `/model <name>` | Switch active model for nullptr (e.g. `/model qwen2.5-coder`) |
 | `/clear` | Clear nullptr conversation context & memory |

@@ -48,6 +48,10 @@ This document contains critical architectural rules, conventions, and constraint
 - Production bundler: `npm run build` (`tsc --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/index.js`).
 - Never introduce dependencies or configurations that break `esbuild` or `tsc --noEmit`.
 
+### D. Media Delivery Invariants
+- **All video downloads** must be hosted and served exclusively via the built-in HTTP `fileServer` (`FileServerService`). Never upload videos directly into Telegram chat (`telegram.sendVideo`), regardless of file size.
+- **Audio downloads** $\le 50\text{ MB}$ are delivered directly to Telegram chat via `telegram.sendAudio`. Files $> 50\text{ MB}$ route to `fileServer`.
+
 ---
 
 ## 🏛️ 3. Layer Separation & Design Patterns
@@ -57,13 +61,16 @@ This document contains critical architectural rules, conventions, and constraint
 2. **`src/core/` (Cross-Cutting Infrastructure)**:
    - Contains custom typed errors (`AppError`, `TelegramApiError`, `LlmProviderError`), structured logging (`ConsoleLogger`), and common types.
 3. **`src/domain/` (Business Entities & Abstractions)**:
+   - `domain/downloader/`: `IDownloaderService` interface, types, and `YtDlpDownloader`.
    - `domain/llm/`: `ILlmProvider` interface and concrete implementations (`OllamaProvider`).
    - `domain/session/`: `ISessionStore` interface and implementations (`InMemorySessionStore`).
    - `domain/telegram/`: `ITelegramClient` interface, Telegram client wrapper, and typed DTOs.
 4. **`src/services/` (Application Services & Command Pattern)**:
    - `services/commands/`: Individual command handlers implementing `ICommandHandler`.
    - `services/command.registry.ts`: Command dispatcher and `setMyCommands` mapper.
-   - `services/bot.service.ts`: Long-polling loop, message streaming, rate-limit backoff, and access control.
+   - `services/downloader/`: `downloader-ui.helper.ts` (2-step hierarchical format/quality drilldown & session caching).
+   - `services/file-server/`: `IFileServerService` interface and `FileServerService` (HTTP server for video streaming player & direct downloads).
+   - `services/bot.service.ts`: Long-polling loop, message streaming, rate-limit backoff, link detection, and delivery routing.
 5. **`src/index.ts` (Composition Root)**:
    - Pure Dependency Injection: instantiates configuration, logger, clients, providers, stores, command handlers, and orchestrator.
 
@@ -99,4 +106,4 @@ For in-depth procedures and workflows, consult the specialized workspace skills:
 - **`add-bot-command`** (`.agents/skills/add-bot-command/SKILL.md`): Adding new slash commands and Telegram menu auto-registration.
 - **`add-llm-provider`** (`.agents/skills/add-llm-provider/SKILL.md`): Implementing new inference providers (OpenAI, Claude, Gemini, vLLM).
 - **`deploy-oracle-cloud`** (`.agents/skills/deploy-oracle-cloud/SKILL.md`): Oracle Cloud deployment, systemd configuration, and firewall troubleshooting.
-- **ytdlp-media-download** (.agents/skills/ytdlp-media-download/SKILL.md): yt-dlp media downloader architecture, link detection, format extraction, and Telegram 50MB limits.
+- **`ytdlp-media-download`** (`.agents/skills/ytdlp-media-download/SKILL.md`): yt-dlp media downloader architecture, 2-step drilldown menus, format extraction, HTTP file server video streaming, and tubesnag-desktop patterns.

@@ -32,7 +32,7 @@ export class PingCommand implements ICommandHandler {
     const startTime = Date.now();
     
     // ctx provides:
-    // ctx.chatId, ctx.senderId, ctx.args, ctx.telegram, ctx.llm, ctx.sessionStore, ctx.logger
+    // ctx.chatId, ctx.senderId, ctx.rawText, ctx.args, ctx.telegram, ctx.llm, ctx.sessionStore, ctx.downloader, ctx.fileServer, ctx.logger
 
     await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,

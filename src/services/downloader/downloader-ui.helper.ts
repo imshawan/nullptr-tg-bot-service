@@ -87,7 +87,7 @@ export function buildVideoMenu(session: PendingDownloadSession): { text: string;
     `🎬 *${session.title}*`,
     `Select video resolution (*Container: ${session.selectedVideoFormat.toUpperCase()}*):`,
     "",
-    "💡 _Resolutions marked with ⚠️ exceed Telegram's 50 MB bot limit (stream/download link will be provided)._",
+    "💡 _All videos are served via high-speed streaming & direct download._",
   ].join("\n");
 
   const keyboardRows: Array<Array<{ text: string; callback_data: string }>> = [];
@@ -108,11 +108,7 @@ export function buildVideoMenu(session: PendingDownloadSession): { text: string;
     let sizeBadge = "";
     if (vq.approxSizeBytes) {
       const sizeMb = Math.round(vq.approxSizeBytes / (1024 * 1024));
-      if (vq.approxSizeBytes > 50 * 1024 * 1024) {
-        sizeBadge = ` (⚠️ ~${sizeMb}MB)`;
-      } else {
-        sizeBadge = ` (~${sizeMb}MB)`;
-      }
+      sizeBadge = ` (~${sizeMb}MB)`;
     }
 
     resButtons.push({
