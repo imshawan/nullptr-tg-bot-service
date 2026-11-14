@@ -22,7 +22,7 @@ export class DownloadCommand implements ICommandHandler {
 
     if (!rawTarget) {
       const msg = [
-        `📥 *nullptr (NullPointer Bot) Downloader*`,
+        `📥 *NullPointer Downloader*`,
         "",
         "Usage: `/download <url> [format]` (or `/dl <url>`)",
         "",

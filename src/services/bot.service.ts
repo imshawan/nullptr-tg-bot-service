@@ -48,10 +48,10 @@ export class BotService {
   }
 
   /**
-   * Initializes nullptr bot, registers Telegram slash commands, and verifies LLM & Downloader readiness.
+   * InitializesNullPointerbot, registers Telegram slash commands, and verifies LLM & Downloader readiness.
    */
   public async init(): Promise<void> {
-    this.logger.info("Initializing nullptr (NullPointer Bot) Service...");
+    this.logger.info("Initializing NullPointer Service...");
 
     // 1. Register commands with Telegram to display slash menu popup
     const botCommands = this.commandRegistry.getBotCommands();
@@ -76,7 +76,7 @@ export class BotService {
    */
   public async start(): Promise<void> {
     this.isRunning = true;
-    this.logger.info("Starting nullptr (NullPointer Bot) Telegram long-polling loop...");
+    this.logger.info("Starting NullPointer Telegram long-polling loop...");
 
     while (this.isRunning) {
       try {
@@ -98,14 +98,14 @@ export class BotService {
       }
     }
 
-    this.logger.info("nullptr (NullPointer Bot) Telegram polling stopped.");
+    this.logger.info("NullPointer Telegram polling stopped.");
   }
 
   /**
    * Stops the polling loop gracefully
    */
   public stop(): void {
-    this.logger.info("Shutting down nullptr (NullPointer Bot) service...");
+    this.logger.info("Shutting down NullPointer service...");
     this.isRunning = false;
   }
 
@@ -127,10 +127,10 @@ export class BotService {
 
     // Security Gate / Authorization
     if (this.config.allowedUserIds.size > 0 && (!senderId || !this.config.allowedUserIds.has(senderId))) {
-      this.logger.warn(`[Security] Blocked unauthorized access attempt to nullptr from ID: ${senderId} (@${msg.from?.username || "unknown"})`);
+      this.logger.warn(`[Security] Blocked unauthorized access attempt toNullPointerfrom ID: ${senderId} (@${msg.from?.username || "unknown"})`);
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⛔ Access denied. Your Telegram ID (${senderId}) is not authorized to use nullptr (NullPointer Bot).`,
+        text: `⛔ Access denied. Your Telegram ID (${senderId}) is not authorized to use NullPointer.`,
       });
       return;
     }

@@ -2,18 +2,18 @@
 name: deploy-oracle-cloud
 description: >-
   Use this skill when deploying, configuring firewalls, managing systemd services, or
-  troubleshooting Oracle Cloud network connectivity for nullptr (NullPointer Bot).
+  troubleshooting Oracle Cloud network connectivity for NullPointer.
 ---
 
-# Deploying nullptr (NullPointer Bot) on Oracle Cloud
+# Deploying NullPointer on Oracle Cloud
 
-This runbook covers setting up, securing, and maintaining **nullptr (NullPointer Bot)** and an Ollama instance on an Oracle Cloud Compute VM.
+This runbook covers setting up, securing, and maintaining **NullPointer** and an Ollama instance on an Oracle Cloud Compute VM.
 
 ---
 
 ## ☁️ 1. Ollama Configuration on Oracle Cloud
 
-By default, Ollama binds only to `127.0.0.1`. If nullptr runs on a different machine or communicates over the public/VCN IP:
+By default, Ollama binds only to `127.0.0.1`. IfNullPointerruns on a different machine or communicates over the public/VCN IP:
 
 1. Create/edit the systemd override:
    ```bash
@@ -59,7 +59,7 @@ sudo netfilter-persistent save
 
 ---
 
-## 🚀 3. Deploying nullptr with systemd
+## 🚀 3. DeployingNullPointerwith systemd
 
 1. Build the production bundle:
    ```bash
@@ -83,7 +83,7 @@ sudo netfilter-persistent save
 
 ## 🩺 4. Diagnostic Commands
 
-If nullptr reports connection errors:
+IfNullPointerreports connection errors:
 ```bash
 # Test local Ollama endpoint
 curl http://localhost:11434/api/tags

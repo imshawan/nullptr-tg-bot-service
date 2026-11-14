@@ -1,7 +1,7 @@
 {
   "name": "nullptr-tg-bot-service",
   "version": "1.0.0",
-  "description": "nullptr (NullPointer Bot) - Enterprise TypeScript Telegram Bot Service for LLMs",
+  "description": "NullPointer - Enterprise TypeScript Telegram Bot Service for LLMs",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

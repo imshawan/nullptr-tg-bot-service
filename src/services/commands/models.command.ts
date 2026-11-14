@@ -22,7 +22,7 @@ export class ModelsCommand implements ICommandHandler {
         .map((m) => (m.name === active ? `* ${m.name} (active)` : `  ${m.name}`))
         .join("\n");
 
-      const responseText = `Installed models for nullptr (NullPointer Bot):\n${listStr}\n\nSwitch active model using: /model <name>`;
+      const responseText = `Installed models for NullPointer:\n${listStr}\n\nSwitch active model using: /model <name>`;
       const chunks = splitMessageText(responseText, 4000);
 
       for (const chunk of chunks) {

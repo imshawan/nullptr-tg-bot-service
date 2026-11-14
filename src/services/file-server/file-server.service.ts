@@ -163,7 +163,7 @@ export class FileServerService implements IFileServerService {
     const match = pathname.match(/^\/dl\/([a-f0-9]{32})\/(.+)$/i);
     if (!match) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("404 Not Found - nullptr File Server");
+      res.end("404 Not Found -NullPointerFile Server");
       return;
     }
 

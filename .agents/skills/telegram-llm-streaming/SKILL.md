@@ -6,9 +6,9 @@ description: >-
   and mapping from legacy bot.mjs.
 ---
 
-# nullptr (NullPointer Bot) — Streaming & Core Bot Operations
+# NullPointer — Streaming & Core Bot Operations
 
-This skill documents the end-to-end operational pipeline of **nullptr (NullPointer Bot)**, including the exact translation of the original single-file `bot.mjs` into our enterprise modular architecture.
+This skill documents the end-to-end operational pipeline of **NullPointer**, including the exact translation of the original single-file `bot.mjs` into our enterprise modular architecture.
 
 ---
 
@@ -64,7 +64,7 @@ flowchart TD
 
 ### 2. Typing Indicator Heartbeat
 - Telegram automatically dismisses the `"typing..."` chat header after 5 seconds.
-- While the remote LLM on Oracle Cloud processes the prompt before returning its first token, `BotService` maintains an active heartbeat timer (`setInterval` every 4500ms) to ensure the user knows nullptr is working.
+- While the remote LLM on Oracle Cloud processes the prompt before returning its first token, `BotService` maintains an active heartbeat timer (`setInterval` every 4500ms) to ensure the user knowsNullPointeris working.
 - As soon as the first stream chunk arrives, the heartbeat interval is immediately cleared.
 
 ### 3. Cursor Effect
