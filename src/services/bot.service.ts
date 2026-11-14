@@ -7,7 +7,7 @@ import { MediaFormat, MediaQuality, AudioBitrate } from "@/domain/downloader/dow
 import { IFileServerService } from "@/services/file-server/file-server.interface";
 import { CommandRegistry } from "@/services/command.registry";
 import { ILogger } from "@/core/logger/logger.interface";
-import { TelegramUpdate, TelegramCallbackQuery, InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
+import { TelegramUpdate, TelegramCallbackQuery, InlineKeyboardMarkup, TelegramUser } from "@/domain/telegram/telegram.types";
 import {
   splitMessageText,
   isTelegramButtonUrl,
@@ -25,7 +25,7 @@ import {
 } from "@/services/downloader/downloader-ui.helper";
 
 export interface BotServiceConfig {
-  allowedUserIds: Set<number>;
+  allowedUserIds: Set<string>;
   streamEditIntervalMs: number;
 }
 
@@ -110,11 +110,42 @@ export class BotService {
   }
 
   /**
+   * Checks whether a Telegram user is authorized to interact with nullptr.
+   * Supports both numeric Telegram user IDs and usernames (with or without '@').
+   */
+  private isUserAuthorized(from?: TelegramUser): boolean {
+    if (this.config.allowedUserIds.size === 0) {
+      return true;
+    }
+    if (!from) {
+      return false;
+    }
+
+    const numericId = String(from.id);
+    const username = from.username ? from.username.toLowerCase().replace(/^@/, "") : "";
+
+    return (
+      this.config.allowedUserIds.has(numericId) ||
+      (Boolean(username) && this.config.allowedUserIds.has(username))
+    );
+  }
+
+  /**
    * Processes an incoming update (Message or Inline Callback Query)
    */
   private async processUpdate(update: TelegramUpdate): Promise<void> {
     // 1. Handle Inline Keyboard Callback Queries (e.g. Media format buttons)
     if (update.callback_query) {
+      if (!this.isUserAuthorized(update.callback_query.from)) {
+        this.logger.warn(
+          `[Security] Blocked unauthorized callback query from ID: ${update.callback_query.from.id} (@${update.callback_query.from.username || "unknown"})`
+        );
+        await this.telegram.answerCallbackQuery({
+          callback_query_id: update.callback_query.id,
+          text: "⛔ Access denied. You are not authorized to use nullptr.",
+        });
+        return;
+      }
       await this.handleCallbackQuery(update.callback_query);
       return;
     }
@@ -126,11 +157,13 @@ export class BotService {
     const senderId = msg.from?.id;
 
     // Security Gate / Authorization
-    if (this.config.allowedUserIds.size > 0 && (!senderId || !this.config.allowedUserIds.has(senderId))) {
-      this.logger.warn(`[Security] Blocked unauthorized access attempt toNullPointerfrom ID: ${senderId} (@${msg.from?.username || "unknown"})`);
+    if (!this.isUserAuthorized(msg.from)) {
+      this.logger.warn(
+        `[Security] Blocked unauthorized access attempt to nullptr from ID: ${senderId ?? "unknown"} (@${msg.from?.username || "unknown"})`
+      );
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⛔ Access denied. Your Telegram ID (${senderId}) is not authorized to use NullPointer.`,
+        text: `⛔ Access denied. Your Telegram ID (${senderId ?? "unknown"}) is not authorized to use nullptr (NullPointer Bot).`,
       });
       return;
     }

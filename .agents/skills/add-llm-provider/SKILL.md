@@ -103,8 +103,8 @@ Replace or parameterize the provider instantiation in `src/index.ts`:
 
 ```typescript
 const llmProvider = new CustomLlmProvider({
-  defaultModel: getConfig("OPENAI_MODEL") || "gpt-4o",
-  apiKey: getConfigOpenaiApiKey(),
+  defaultModel: "gpt-4o",
+  apiKey: getConfigCustomApiKey(),
   logger,
 });
 ```

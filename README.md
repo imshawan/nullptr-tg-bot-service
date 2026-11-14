@@ -84,7 +84,7 @@ src/
 - **Slash Command Autocomplete**:
   - Automatically configures Telegram's `/` autocomplete popup and native Menu button via `setMyCommands`.
 - **Security & Centralized Config**:
-  - Authorization guard restricting bot usage to authorized Telegram IDs.
+  - Authorization guard restricting bot usage to authorized Telegram usernames and numeric IDs via comma-separated list (`ALLOWED_USER_IDS`).
   - Zero direct `process.env` calls outside `src/config/index.ts`.
 
 ---
@@ -114,7 +114,7 @@ cp .env.example .env
 Edit `.env`:
 ```env
 TELEGRAM_TOKEN=your_telegram_bot_token_here
-ALLOWED_USER_ID=your_numeric_telegram_id
+ALLOWED_USER_IDS=uxyg4nry4,xnhweeh  # Comma-separated usernames or numeric IDs
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
 SYSTEM_PROMPT="You are NullPointer, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."

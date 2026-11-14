@@ -42,7 +42,7 @@ async function bootstrap(): Promise<void> {
   const allowedUserIds = getConfigAllowedUserIds();
   const allowedCount = allowedUserIds.size;
   logger.info(
-    `Security: ${allowedCount > 0 ? `${allowedCount} authorized user ID(s) configured for nullptr.` : "⚠️ Unrestricted access (no allowed IDs configured)!"}`
+    `Security: ${allowedCount > 0 ? `${allowedCount} authorized user(s) configured for nullptr.` : "⚠️ Unrestricted access (no allowed IDs configured)!"}`
   );
 
   // 2. Domain layer initialization using typed getters

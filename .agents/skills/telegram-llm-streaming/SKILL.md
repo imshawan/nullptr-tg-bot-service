@@ -36,7 +36,7 @@ When an update arrives from Telegram via `getUpdates`:
 
 ```mermaid
 flowchart TD
-    Update[Telegram Update Received] --> Auth{Allowed User ID?}
+    Update[Telegram Update Received] --> Auth{Authorized User?}
     Auth -- No --> Deny[Send 403 Access Denied Message]
     Auth -- Yes --> IsCommand{Starts with '/'?}
     IsCommand -- Yes --> Dispatch[CommandRegistry.dispatch]
@@ -89,3 +89,10 @@ flowchart TD
 ### 6. Context Memory & Model Switch Reset
 - Conversation history is trimmed to `MAX_HISTORY_MESSAGES` (default 20) on every turn.
 - When a user switches models using `/model <target>`, `ctx.sessionStore.clearHistory(chatId)` is **always called** to prevent context contamination across different model architectures.
+
+### 7. User Authorization & Security Gate
+- Access control is governed by `ALLOWED_USER_IDS` in `.env`.
+- Supports 1 or more comma-separated Telegram usernames (e.g. `uxyg4nry4,xnhweeh`), numeric IDs (e.g. `12345678,87654321`), or a combination.
+- Usernames are matched case-insensitively with leading `@` stripped.
+- Both incoming text messages (`processUpdate`) and callback queries (`handleCallbackQuery`) are evaluated against the authorized set.
+- If `ALLOWED_USER_IDS` is omitted or empty, access is unrestricted.

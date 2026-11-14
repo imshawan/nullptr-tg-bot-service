@@ -58,19 +58,6 @@ const envSchema = z.object({
   MAX_HISTORY_MESSAGES: z.string().default("20").transform((val) => parseInt(val, 10)),
   LLM_QUERY_TIMEOUT_MS: z.string().default("600000").transform((val) => parseInt(val, 10)),
 
-  // Optional multi-provider API keys
-  ANTHROPIC_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  GEMINI_API_KEY: z.string().optional(),
-  GOOGLE_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-3-5-sonnet-20241022"),
-  OPENAI_MODEL: z.string().default("gpt-4o"),
-  GEMINI_MODEL: z.string().default("gemini-1.5-pro-latest"),
-
-  // Optional cache / storage
-  REDIS_HOST: z.string().default("localhost"),
-  REDIS_PORT: z.string().default("6379").transform((val) => parseInt(val, 10)),
-
   // Media Downloader (yt-dlp) configuration
   YTDLP_PATH: z.string().optional(),
   FFMPEG_PATH: z.string().optional(),
@@ -115,13 +102,13 @@ export const getConfigLogLevel = (): "debug" | "info" | "warn" | "error" => env.
 export const getConfigTelegramToken = (): string => env.TELEGRAM_TOKEN;
 export const getConfigStreamEditIntervalMs = (): number => env.STREAM_EDIT_INTERVAL_MS;
 
-export const getConfigAllowedUserIds = (): Set<number> => {
+export const getConfigAllowedUserIds = (): Set<string> => {
   const rawAllowed = [env.ALLOWED_USER_IDS, env.ALLOWED_USER_ID].filter(Boolean).join(",");
-  return new Set<number>(
+  return new Set<string>(
     rawAllowed
       .split(",")
-      .map((id) => parseInt(id.trim(), 10))
-      .filter((id) => !isNaN(id) && id > 0)
+      .map((id) => id.trim().toLowerCase().replace(/^@/, ""))
+      .filter((id) => id.length > 0)
   );
 };
 
@@ -144,16 +131,6 @@ export const getConfigSystemPrompt = (): string => {
 };
 export const getConfigMaxHistoryMessages = (): number => env.MAX_HISTORY_MESSAGES;
 export const getConfigLlmQueryTimeoutMs = (): number => env.LLM_QUERY_TIMEOUT_MS;
-
-export const getConfigAnthropicApiKey = (): string | undefined => env.ANTHROPIC_API_KEY;
-export const getConfigOpenaiApiKey = (): string | undefined => env.OPENAI_API_KEY;
-export const getConfigGeminiApiKey = (): string | undefined => env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
-export const getConfigAnthropicModel = (): string => env.ANTHROPIC_MODEL;
-export const getConfigOpenaiModel = (): string => env.OPENAI_MODEL;
-export const getConfigGeminiModel = (): string => env.GEMINI_MODEL;
-
-export const getConfigRedisHost = (): string => env.REDIS_HOST;
-export const getConfigRedisPort = (): number => env.REDIS_PORT;
 
 export const getConfigYtDlpPath = (): string | undefined => env.YTDLP_PATH;
 export const getConfigFfmpegPath = (): string | undefined => env.FFMPEG_PATH;
