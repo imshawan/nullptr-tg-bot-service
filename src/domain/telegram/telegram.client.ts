@@ -30,12 +30,6 @@ export class TelegramClient implements ITelegramClient {
     const url = `${this.baseUrl}/${method}`;
     const timeoutMs = method === "getUpdates" ? 35_000 : 30_000;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-
-    // Avoid stale pooled sockets for long-polling requests
-    if (method === "getUpdates") {
-      headers["Connection"] = "close";
-    }
-
     const maxAttempts = method === "getUpdates" ? 2 : 1;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -51,11 +45,12 @@ export class TelegramClient implements ITelegramClient {
         const isSocketReset =
           err instanceof Error &&
           (err.message.includes("ECONNRESET") ||
+            err.message.includes("fetch failed") ||
             (err as Error & { cause?: { code?: string } }).cause?.code === "ECONNRESET");
 
         if (isSocketReset && attempt < maxAttempts) {
-          this.logger.debug(`[${method}] Transient ECONNRESET on attempt ${attempt}. Retrying...`);
-          await new Promise((r) => setTimeout(r, 400));
+          this.logger.debug(`[${method}] Transient network glitch on attempt ${attempt}. Retrying...`);
+          await new Promise((r) => setTimeout(r, 500));
           continue;
         }
 
@@ -63,7 +58,10 @@ export class TelegramClient implements ITelegramClient {
         if (err instanceof Error) {
           const cause = (err as Error & { cause?: unknown }).cause;
           if (cause) {
-            causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+            const raw = cause instanceof Error ? cause.message || cause.name : String(cause);
+            if (raw && raw.trim().length > 0) {
+              causeDetail = ` (cause: ${raw.trim()})`;
+            }
           }
         }
         const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
@@ -128,7 +126,10 @@ export class TelegramClient implements ITelegramClient {
       if (err instanceof Error) {
         const cause = (err as Error & { cause?: unknown }).cause;
         if (cause) {
-          causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+          const raw = cause instanceof Error ? cause.message || cause.name : String(cause);
+          if (raw && raw.trim().length > 0) {
+            causeDetail = ` (cause: ${raw.trim()})`;
+          }
         }
       }
       const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
