@@ -13,7 +13,7 @@ export class StartCommand implements ICommandHandler {
       `🤖 *${BOT_NAME}*`,
       `Connected to: \`${host}\``,
       `Active model: \`${activeModel}\``,
-      `👨‍💻 *Creator:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
+      `👨‍💻 *Creator:* Shawan Mandal ([@imshawan](https://www.imshawan.dev) · hello@imshawan.dev)`,
       "",
       "📋 *Available Commands:*",
       "/download <url> - Download video or MP3 audio from any link",

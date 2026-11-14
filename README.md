@@ -184,5 +184,5 @@ If your Ollama instance is running on an Oracle Cloud Compute instance:
 **NullPointer** is authored, created, and maintained by:
 - **Shawan Mandal**
 - Email: [hello@imshawan.dev](mailto:hello@imshawan.dev)
-- Website: [imshawan.dev](https://imshawan.dev)
+- Website: [imshawan.dev](https://www.imshawan.dev)
 - GitHub: [@imshawan](https://github.com/imshawan)

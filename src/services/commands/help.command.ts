@@ -13,7 +13,7 @@ export class HelpCommand implements ICommandHandler {
       `📖 *${BOT_NAME} Guide*`,
       `Connected to: \`${host}\``,
       `Active model: \`${activeModel}\``,
-      `👨‍💻 *Created & Managed by:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
+      `👨‍💻 *Created & Managed by:* Shawan Mandal ([@imshawan](https://www.imshawan.dev) · hello@imshawan.dev)`,
       "",
       "📋 *Command Reference:*",
       "• `/download <url> [format]` — Download video (MP4/720p/480p) or audio (MP3/M4A)",
