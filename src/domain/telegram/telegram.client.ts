@@ -37,11 +37,36 @@ export class TelegramClient implements ITelegramClient {
         body: JSON.stringify(payload),
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new TelegramApiError(`Network failure during '${method}': ${msg}`, method);
+      let causeDetail = "";
+      if (err instanceof Error) {
+        const cause = (err as Error & { cause?: unknown }).cause;
+        if (cause) {
+          causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+        }
+      }
+      const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
+      throw new TelegramApiError(
+        `Network failure during '${method}': ${msg}`,
+        method,
+        undefined,
+        undefined,
+        err instanceof Error ? (err as Error & { cause?: unknown }).cause || err.message : err
+      );
     }
 
-    const data = (await res.json()) as TelegramApiResponse<T>;
+    let data: TelegramApiResponse<T>;
+    try {
+      data = (await res.json()) as TelegramApiResponse<T>;
+    } catch {
+      const text = await res.text().catch(() => "");
+      throw new TelegramApiError(
+        `Invalid response from Telegram on '${method}' [HTTP ${res.status}]: ${text.slice(0, 150)}`,
+        method,
+        res.status,
+        undefined,
+        { status: res.status, text: text.slice(0, 150) }
+      );
+    }
 
     if (!data.ok) {
       const retryAfter = data.parameters?.retry_after;
@@ -55,7 +80,8 @@ export class TelegramClient implements ITelegramClient {
         data.description || "Unknown Telegram API error",
         method,
         data.error_code,
-        retryAfter
+        retryAfter,
+        data.parameters
       );
     }
 
@@ -72,24 +98,51 @@ export class TelegramClient implements ITelegramClient {
         body: formData,
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new TelegramApiError(`Network failure during '${method}' upload: ${msg}`, method);
+      let causeDetail = "";
+      if (err instanceof Error) {
+        const cause = (err as Error & { cause?: unknown }).cause;
+        if (cause) {
+          causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+        }
+      }
+      const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
+      throw new TelegramApiError(
+        `Network failure during '${method}' upload: ${msg}`,
+        method,
+        undefined,
+        undefined,
+        err instanceof Error ? (err as Error & { cause?: unknown }).cause || err.message : err
+      );
     }
 
-    const data = (await res.json()) as TelegramApiResponse<T>;
+    let data: TelegramApiResponse<T>;
+    try {
+      data = (await res.json()) as TelegramApiResponse<T>;
+    } catch {
+      const text = await res.text().catch(() => "");
+      throw new TelegramApiError(
+        `Invalid upload response on '${method}' [HTTP ${res.status}]: ${text.slice(0, 150)}`,
+        method,
+        res.status,
+        undefined,
+        { status: res.status, text: text.slice(0, 150) }
+      );
+    }
+
     if (!data.ok) {
       throw new TelegramApiError(
         data.description || "Upload error",
         method,
         data.error_code,
-        data.parameters?.retry_after
+        data.parameters?.retry_after,
+        data.parameters
       );
     }
 
     return data.result as T;
   }
 
-  public async getUpdates(offset: number, timeoutSeconds: number = 30): Promise<TelegramUpdate[]> {
+  public async getUpdates(offset: number, timeoutSeconds: number = 25): Promise<TelegramUpdate[]> {
     return this.request<TelegramUpdate[]>("getUpdates", {
       offset,
       timeout: timeoutSeconds,

@@ -81,7 +81,7 @@ export class BotService {
 
     while (this.isRunning) {
       try {
-        const updates = await this.telegram.getUpdates(this.updateOffset, 30);
+        const updates = await this.telegram.getUpdates(this.updateOffset, 25);
         for (const update of updates) {
           this.updateOffset = update.update_id + 1;
           await this.processUpdate(update);

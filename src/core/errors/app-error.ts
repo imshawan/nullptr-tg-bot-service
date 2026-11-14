@@ -27,9 +27,10 @@ export class TelegramApiError extends AppError {
     message: string,
     public readonly method: string,
     public readonly errorCode?: number,
-    public readonly retryAfter?: number
+    public readonly retryAfter?: number,
+    details?: unknown
   ) {
-    super(message, "TELEGRAM_API_ERROR");
+    super(message, "TELEGRAM_API_ERROR", details);
   }
 }
 
