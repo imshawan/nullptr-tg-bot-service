@@ -163,7 +163,7 @@ export class BotService {
       );
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⛔ Access denied. Your Telegram ID (${senderId ?? "unknown"}) is not authorized to use nullptr (NullPointer Bot).`,
+        text: `⛔ Access denied. Your Telegram ID (${senderId ?? "unknown"}) is not authorized to interact with *NullPointer*.`,
       });
       return;
     }
