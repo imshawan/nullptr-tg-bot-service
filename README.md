@@ -1,4 +1,4 @@
-# nullptr (NullPointer Bot) — Enterprise Telegram LLM & Media Service
+# nullptr (NullPointer) — Enterprise Telegram LLM & Media Service
 
 **nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus advanced media downloading (8K to 144p video, MP3/M4A/FLAC/WAV audio) powered by `yt-dlp` and a built-in HTTP streaming file server.
 
