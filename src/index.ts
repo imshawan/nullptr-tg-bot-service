@@ -1,3 +1,8 @@
+import dns from "node:dns";
+
+// Prioritize IPv4 over IPv6 across all Node.js networking to prevent IPv6 blackholing on Oracle Cloud VCNs
+dns.setDefaultResultOrder("ipv4first");
+
 import {
   BOT_NAME,
   getConfigLogLevel,

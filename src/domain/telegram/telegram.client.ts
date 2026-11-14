@@ -28,64 +28,89 @@ export class TelegramClient implements ITelegramClient {
 
   private async request<T = unknown>(method: string, payload: Record<string, unknown> = {}): Promise<T> {
     const url = `${this.baseUrl}/${method}`;
-    let res: Response;
+    const timeoutMs = method === "getUpdates" ? 35_000 : 30_000;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch (err: unknown) {
-      let causeDetail = "";
-      if (err instanceof Error) {
-        const cause = (err as Error & { cause?: unknown }).cause;
-        if (cause) {
-          causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+    // Avoid stale pooled sockets for long-polling requests
+    if (method === "getUpdates") {
+      headers["Connection"] = "close";
+    }
+
+    const maxAttempts = method === "getUpdates" ? 2 : 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (err: unknown) {
+        const isSocketReset =
+          err instanceof Error &&
+          (err.message.includes("ECONNRESET") ||
+            (err as Error & { cause?: { code?: string } }).cause?.code === "ECONNRESET");
+
+        if (isSocketReset && attempt < maxAttempts) {
+          this.logger.debug(`[${method}] Transient ECONNRESET on attempt ${attempt}. Retrying...`);
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
         }
-      }
-      const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
-      throw new TelegramApiError(
-        `Network failure during '${method}': ${msg}`,
-        method,
-        undefined,
-        undefined,
-        err instanceof Error ? (err as Error & { cause?: unknown }).cause || err.message : err
-      );
-    }
 
-    let data: TelegramApiResponse<T>;
-    try {
-      data = (await res.json()) as TelegramApiResponse<T>;
-    } catch {
-      const text = await res.text().catch(() => "");
-      throw new TelegramApiError(
-        `Invalid response from Telegram on '${method}' [HTTP ${res.status}]: ${text.slice(0, 150)}`,
-        method,
-        res.status,
-        undefined,
-        { status: res.status, text: text.slice(0, 150) }
-      );
-    }
-
-    if (!data.ok) {
-      const retryAfter = data.parameters?.retry_after;
-      const isExpectedNonCritical = data.error_code === 400 && data.description?.includes("message is not modified");
-
-      if (!isExpectedNonCritical) {
-        this.logger.warn(`Telegram API error on ${method}: [${data.error_code}] ${data.description}`);
+        let causeDetail = "";
+        if (err instanceof Error) {
+          const cause = (err as Error & { cause?: unknown }).cause;
+          if (cause) {
+            causeDetail = ` (cause: ${cause instanceof Error ? cause.message : String(cause)})`;
+          }
+        }
+        const msg = err instanceof Error ? `${err.message}${causeDetail}` : String(err);
+        throw new TelegramApiError(
+          `Network failure during '${method}': ${msg}`,
+          method,
+          undefined,
+          undefined,
+          err instanceof Error ? (err as Error & { cause?: unknown }).cause || err.message : err
+        );
       }
 
-      throw new TelegramApiError(
-        data.description || "Unknown Telegram API error",
-        method,
-        data.error_code,
-        retryAfter,
-        data.parameters
-      );
+      let data: TelegramApiResponse<T>;
+      try {
+        data = (await res.json()) as TelegramApiResponse<T>;
+      } catch {
+        const text = await res.text().catch(() => "");
+        throw new TelegramApiError(
+          `Invalid response from Telegram on '${method}' [HTTP ${res.status}]: ${text.slice(0, 150)}`,
+          method,
+          res.status,
+          undefined,
+          { status: res.status, text: text.slice(0, 150) }
+        );
+      }
+
+      if (!data.ok) {
+        const retryAfter = data.parameters?.retry_after;
+        const isExpectedNonCritical = data.error_code === 400 && data.description?.includes("message is not modified");
+
+        if (!isExpectedNonCritical) {
+          this.logger.warn(`Telegram API error on ${method}: [${data.error_code}] ${data.description}`);
+        }
+
+        throw new TelegramApiError(
+          data.description || "Unknown Telegram API error",
+          method,
+          data.error_code,
+          retryAfter,
+          data.parameters
+        );
+      }
+
+      return data.result as T;
     }
 
-    return data.result as T;
+    throw new TelegramApiError(`Failed request '${method}' after ${maxAttempts} attempts`, method);
   }
 
   private async uploadRequest<T = unknown>(method: string, formData: FormData): Promise<T> {
@@ -96,6 +121,7 @@ export class TelegramClient implements ITelegramClient {
       res = await fetch(url, {
         method: "POST",
         body: formData,
+        signal: AbortSignal.timeout(120_000),
       });
     } catch (err: unknown) {
       let causeDetail = "";
@@ -140,6 +166,12 @@ export class TelegramClient implements ITelegramClient {
     }
 
     return data.result as T;
+  }
+
+  public async deleteWebhook(dropPendingUpdates: boolean = false): Promise<boolean> {
+    return this.request<boolean>("deleteWebhook", {
+      drop_pending_updates: dropPendingUpdates,
+    });
   }
 
   public async getUpdates(offset: number, timeoutSeconds: number = 25): Promise<TelegramUpdate[]> {

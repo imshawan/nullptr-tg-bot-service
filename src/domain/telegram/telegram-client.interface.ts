@@ -12,6 +12,9 @@ import {
 } from "@/domain/telegram/telegram.types";
 
 export interface ITelegramClient {
+  /** Remove any registered webhook so long-polling operates reliably */
+  deleteWebhook(dropPendingUpdates?: boolean): Promise<boolean>;
+
   /** Fetch pending updates using long-polling */
   getUpdates(offset: number, timeoutSeconds?: number): Promise<TelegramUpdate[]>;
 

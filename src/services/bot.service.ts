@@ -54,12 +54,21 @@ export class BotService {
   public async init(): Promise<void> {
     this.logger.info(`Initializing ${BOT_NAME} Service...`);
 
-    // 1. Register commands with Telegram to display slash menu popup
+    // 1. Clear any dangling webhooks to ensure clean long-polling
+    try {
+      await this.telegram.deleteWebhook(false);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[${BOT_NAME}] Non-fatal notice clearing webhook: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    // 2. Register commands with Telegram to display slash menu popup
     const botCommands = this.commandRegistry.getBotCommands();
     await this.telegram.setMyCommands(botCommands);
     await this.telegram.setChatMenuButton("commands");
 
-    // 2. Health check to Oracle Cloud Ollama
+    // 3. Health check to Oracle Cloud Ollama
     const health = await this.llm.checkHealth();
     if (health.ok) {
       this.logger.info(
@@ -89,9 +98,22 @@ export class BotService {
       } catch (err: unknown) {
         if (!this.isRunning) break;
 
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const isTransientNetworkGlitch =
+          err instanceof TelegramApiError &&
+          (errMsg.includes("ECONNRESET") ||
+            errMsg.includes("ETIMEDOUT") ||
+            errMsg.includes("fetch failed") ||
+            errMsg.includes("UND_ERR_SOCKET") ||
+            errMsg.includes("socket hang up") ||
+            errMsg.includes("EAI_AGAIN"));
+
         if (err instanceof TelegramApiError && err.errorCode === 429 && err.retryAfter) {
           this.logger.warn(`[${BOT_NAME}] Rate-limited by Telegram during getUpdates. Waiting ${err.retryAfter}s...`);
           await new Promise((r) => setTimeout(r, err.retryAfter! * 1000));
+        } else if (isTransientNetworkGlitch) {
+          this.logger.warn(`[${BOT_NAME}] Transient polling connection reset (${errMsg}). Reconnecting in 2s...`);
+          await new Promise((r) => setTimeout(r, 2000));
         } else {
           this.logger.error(`[${BOT_NAME}] Polling error:`, err);
           await new Promise((r) => setTimeout(r, 4000));
