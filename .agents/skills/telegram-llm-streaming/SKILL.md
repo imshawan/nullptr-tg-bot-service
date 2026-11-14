@@ -44,7 +44,7 @@ flowchart TD
     Session --> Trim[Trim History to MAX_HISTORY_MESSAGES]
     Trim --> Stream[BotService.streamLlmReply]
     Stream --> Heartbeat[Send 'typing' Action Heartbeat every 4.5s]
-    Stream --> Placeholder[Send 'nullptr is thinking...' Placeholder]
+    Stream --> Placeholder[Send 'NullPointer is thinking...' Placeholder]
     Stream --> Consume[Consume OllamaProvider.chatStream Async Generator]
     Consume --> Throttle{Elapsed >= 1200ms?}
     Throttle -- Yes --> Edit[editMessageText with Cursor ▍]

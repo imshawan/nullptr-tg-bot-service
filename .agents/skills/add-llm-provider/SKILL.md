@@ -7,7 +7,7 @@ description: >-
 
 # Adding an LLM Provider to NullPointer
 
-nullptr abstracts all LLM communication behind the `ILlmProvider` interface in `src/domain/llm/llm-provider.interface.ts`.
+NullPointer abstracts all LLM communication behind the `ILlmProvider` interface in `src/domain/llm/llm-provider.interface.ts`.
 
 ---
 

@@ -217,7 +217,7 @@ export class BotService {
 
     await this.telegram.answerCallbackQuery({
       callback_query_id: query.id,
-      text: "nullptr is processing your request...",
+      text: "NullPointer is processing your request...",
     });
 
     const parts = data.split(":");
@@ -803,7 +803,7 @@ export class BotService {
     // Placeholder message
     const placeholderMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: "nullptr is thinking...",
+      text: "NullPointer is thinking...",
     });
     const placeholderMsgId = placeholderMsg.message_id;
 
@@ -828,7 +828,7 @@ export class BotService {
           now - lastEditTime >= throttleMs
         ) {
           const cleanText = cleanDownloadDirective(fullContent);
-          const previewText = cleanText ? `${cleanText} ▍` : "nullptr is processing your request... ▍";
+          const previewText = cleanText ? `${cleanText} ▍` : "NullPointer is processing your request... ▍";
           if (previewText !== lastEditedText) {
             try {
               await this.telegram.editMessageText({

@@ -8,7 +8,7 @@ description: >-
 
 # NullPointer — yt-dlp Media Downloader Subsystem
 
-nullptr includes a high-performance media downloader built on **yt-dlp**, designed using the proven architecture, format cascades, and UX patterns from the `tubesnag-desktop` project.
+NullPointer includes a high-performance media downloader built on **yt-dlp**, designed using the proven architecture, format cascades, and UX patterns from the `tubesnag-desktop` project.
 
 ---
 
