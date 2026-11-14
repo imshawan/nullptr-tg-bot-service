@@ -26,7 +26,7 @@ export class ModelCommand implements ICommandHandler {
         const available = models.map((m) => m.name).join("\n");
         await ctx.telegram.sendMessage({
           chat_id: ctx.chatId,
-          text: `[nullptr] Model "${target}" not found.\n\nAvailable:\n${available}`,
+          text: `Model "${target}" not found.\n\nAvailable:\n${available}`,
         });
         return;
       }
@@ -42,7 +42,7 @@ export class ModelCommand implements ICommandHandler {
       const message = err instanceof Error ? err.message : String(err);
       await ctx.telegram.sendMessage({
         chat_id: ctx.chatId,
-        text: `[nullptr] Failed to switch model: ${message}`,
+        text: `Failed to switch model: ${message}`,
       });
     }
   }

@@ -35,7 +35,7 @@ export class ModelsCommand implements ICommandHandler {
       const message = err instanceof Error ? err.message : String(err);
       await ctx.telegram.sendMessage({
         chat_id: ctx.chatId,
-        text: `[nullptr] Error fetching models from ${ctx.llm.getHost()}:\n${message}`,
+        text: `Error fetching models from ${ctx.llm.getHost()}:\n${message}`,
       });
     }
   }

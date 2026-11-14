@@ -171,7 +171,7 @@ export class BotService {
       this.logger.error(`[nullptr] Error during LLM chat processing: ${errMsg}`, err);
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⚠️ [nullptr] Error communicating with LLM at ${this.llm.getHost()}:\n${errMsg}`,
+        text: `⚠️ Error communicating with LLM at ${this.llm.getHost()}:\n${errMsg}`,
       });
     }
   }
@@ -182,7 +182,7 @@ export class BotService {
   private async handleDirectUrlSubmission(chatId: number, url: string): Promise<void> {
     const initMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: "🔍 *nullptr* detected media link. Fetching details & qualities...",
+      text: "🔍 *NullPointer* detected media link. Fetching details & qualities...",
       parse_mode: "Markdown",
     });
 
@@ -203,7 +203,7 @@ export class BotService {
       await this.telegram.editMessageText({
         chat_id: chatId,
         message_id: initMsg.message_id,
-        text: `⚠️ [nullptr] Could not inspect media link:\n${errMsg}`,
+        text: `⚠️ Could not inspect media link:\n${errMsg}`,
       });
     }
   }
@@ -502,7 +502,7 @@ export class BotService {
     const { url, format, quality, audioBitrate, title, progressMessageId, token } = options;
     const qualityLabel = quality !== "audio" ? ` · ${quality}` : audioBitrate ? ` · ${audioBitrate}k` : "";
     const labelTitle = title ? `*${title}* ` : "";
-    const progressText = `⏳ *nullptr* is downloading: ${labelTitle}(${format.toUpperCase()}${qualityLabel})...\nPlease wait.`;
+    const progressText = `⏳ *NullPointer* is downloading: ${labelTitle}(${format.toUpperCase()}${qualityLabel})...\nPlease wait.`;
 
     let activeMsgId = progressMessageId;
     if (activeMsgId) {
@@ -610,7 +610,7 @@ export class BotService {
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: activeMsgId!,
-          text: `⚠️ [nullptr] File server is not running or unavailable. Videos cannot be served without the file server enabled.`,
+          text: `⚠️ File server is not running or unavailable. Videos cannot be served without the file server enabled.`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
@@ -690,7 +690,7 @@ export class BotService {
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: activeMsgId!,
-          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting a lower audio bitrate like 128k or 192k!`,
+          text: `⚠️ The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting a lower audio bitrate like 128k or 192k!`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
@@ -730,12 +730,12 @@ export class BotService {
         await this.telegram.editMessageText({
           chat_id: chatId,
           message_id: activeMsgId,
-          text: `⚠️ [nullptr] Download failed:\n${errMsg}`,
+          text: `⚠️ Download failed:\n${errMsg}`,
         });
       } else {
         await this.telegram.sendMessage({
           chat_id: chatId,
-          text: `⚠️ [nullptr] Download failed:\n${errMsg}`,
+          text: `⚠️ Download failed:\n${errMsg}`,
         });
       }
     }

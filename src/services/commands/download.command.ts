@@ -64,7 +64,7 @@ export class DownloadCommand implements ICommandHandler {
   private async showInteractiveFormatPicker(ctx: CommandContext, url: string): Promise<void> {
     const initMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: "🔍 *nullptr* is inspecting link metadata & available qualities...",
+      text: "🔍 *NullPointer* is inspecting link metadata & available qualities...",
       parse_mode: "Markdown",
     });
 
@@ -85,7 +85,7 @@ export class DownloadCommand implements ICommandHandler {
       await ctx.telegram.editMessageText({
         chat_id: ctx.chatId,
         message_id: initMsg.message_id,
-        text: `⚠️ [nullptr] Failed to inspect link:\n${errMsg}`,
+        text: `⚠️ Failed to inspect link:\n${errMsg}`,
       });
     }
   }
@@ -124,7 +124,7 @@ export class DownloadCommand implements ICommandHandler {
 
     const progressMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: `⏳ *nullptr* is downloading (${format.toUpperCase()} ${quality !== "audio" ? quality : "320k"})...`,
+      text: `⏳ *NullPointer* is downloading (${format.toUpperCase()} ${quality !== "audio" ? quality : "320k"})...`,
       parse_mode: "Markdown",
     });
 
@@ -207,7 +207,7 @@ export class DownloadCommand implements ICommandHandler {
         await ctx.telegram.editMessageText({
           chat_id: ctx.chatId,
           message_id: progressMsg.message_id,
-          text: `⚠️ [nullptr] File server is not running or unavailable. Videos cannot be served without the file server enabled.`,
+          text: `⚠️ File server is not running or unavailable. Videos cannot be served without the file server enabled.`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
@@ -285,7 +285,7 @@ export class DownloadCommand implements ICommandHandler {
         await ctx.telegram.editMessageText({
           chat_id: ctx.chatId,
           message_id: progressMsg.message_id,
-          text: `⚠️ [nullptr] The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower audio bitrate.`,
+          text: `⚠️ The downloaded file is *${sizeMb} MB*, which exceeds Telegram's 50 MB upload limit.\nTry selecting MP3 audio or a lower audio bitrate.`,
           parse_mode: "Markdown",
         });
         await fs.unlink(result.filePath).catch(() => {});
@@ -320,7 +320,7 @@ export class DownloadCommand implements ICommandHandler {
       await ctx.telegram.editMessageText({
         chat_id: ctx.chatId,
         message_id: progressMsg.message_id,
-        text: `⚠️ [nullptr] Download failed:\n${errMsg}`,
+        text: `⚠️ Download failed:\n${errMsg}`,
       });
     }
   }
