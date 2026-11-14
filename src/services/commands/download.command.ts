@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 import { MediaFormat, MediaQuality, AudioBitrate } from "@/domain/downloader/downloader.types";
 import { InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
@@ -22,7 +23,7 @@ export class DownloadCommand implements ICommandHandler {
 
     if (!rawTarget) {
       const msg = [
-        `📥 *NullPointer Downloader*`,
+        `📥 *${BOT_NAME} Downloader*`,
         "",
         "Usage: `/download <url> [format]` (or `/dl <url>`)",
         "",
@@ -64,7 +65,7 @@ export class DownloadCommand implements ICommandHandler {
   private async showInteractiveFormatPicker(ctx: CommandContext, url: string): Promise<void> {
     const initMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: "🔍 *NullPointer* is inspecting link metadata & available qualities...",
+      text: `🔍 *${BOT_NAME}* is inspecting link metadata & available qualities...`,
       parse_mode: "Markdown",
     });
 
@@ -124,7 +125,7 @@ export class DownloadCommand implements ICommandHandler {
 
     const progressMsg = await ctx.telegram.sendMessage({
       chat_id: ctx.chatId,
-      text: `⏳ *NullPointer* is downloading (${format.toUpperCase()} ${quality !== "audio" ? quality : "320k"})...`,
+      text: `⏳ *${BOT_NAME}* is downloading (${format.toUpperCase()} ${quality !== "audio" ? quality : "320k"})...`,
       parse_mode: "Markdown",
     });
 
@@ -303,7 +304,7 @@ export class DownloadCommand implements ICommandHandler {
         chat_id: ctx.chatId,
         filePath: result.filePath,
         title: result.title,
-        caption: `🎵 *${result.title}* via nullptr`,
+        caption: `🎵 *${result.title}* via ${BOT_NAME}`,
         parse_mode: "Markdown",
       });
 

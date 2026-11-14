@@ -1,8 +1,9 @@
+import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 
 export class ModelCommand implements ICommandHandler {
   public readonly command = "model";
-  public readonly description = "Switch active model forNullPointer(/model <name>)";
+  public readonly description = `Switch active model for ${BOT_NAME} (/model <name>)`;
 
   public async execute(ctx: CommandContext): Promise<void> {
     const target = ctx.args[0];
@@ -11,7 +12,7 @@ export class ModelCommand implements ICommandHandler {
       const active = ctx.llm.getActiveModel();
       await ctx.telegram.sendMessage({
         chat_id: ctx.chatId,
-        text: `NullPointer current model: ${active}\n\nUsage: /model <model_name>\nRun /models to list available models.`,
+        text: `${BOT_NAME} current model: ${active}\n\nUsage: /model <model_name>\nRun /models to list available models.`,
       });
       return;
     }
@@ -36,7 +37,7 @@ export class ModelCommand implements ICommandHandler {
 
       await ctx.telegram.sendMessage({
         chat_id: ctx.chatId,
-        text: `SwitchedNullPointermodel to: ${matched.name} (conversation context reset).`,
+        text: `Switched ${BOT_NAME} model to: ${matched.name} (conversation context reset).`,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

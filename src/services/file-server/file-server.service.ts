@@ -4,6 +4,7 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
+import { BOT_NAME } from "@/config";
 import { IFileServerService, DownloadEntry } from "./file-server.interface";
 import { ILogger } from "@/core/logger/logger.interface";
 import { renderPlayerView } from "@/views/player.view";
@@ -64,12 +65,12 @@ export class FileServerService implements IFileServerService {
 
     await new Promise<void>((resolve, reject) => {
       this.server!.listen(this.port, "0.0.0.0", () => {
-        this.logger.info(`[nullptr] File Server active on port ${this.port}. Base URL: ${this.resolvedBaseUrl}`);
+        this.logger.info(`[${BOT_NAME}] File Server active on port ${this.port}. Base URL: ${this.resolvedBaseUrl}`);
         resolve();
       });
 
       this.server!.on("error", (err) => {
-        this.logger.error(`[nullptr] Failed to bind File Server on port ${this.port}:`, err);
+        this.logger.error(`[${BOT_NAME}] Failed to bind File Server on port ${this.port}:`, err);
         reject(err);
       });
     });
@@ -88,7 +89,7 @@ export class FileServerService implements IFileServerService {
     if (this.server) {
       await new Promise<void>((resolve) => {
         this.server!.close(() => {
-          this.logger.info("[nullptr] File Server stopped.");
+          this.logger.info(`[${BOT_NAME}] File Server stopped.`);
           this.server = null;
           resolve();
         });
@@ -163,7 +164,7 @@ export class FileServerService implements IFileServerService {
     const match = pathname.match(/^\/dl\/([a-f0-9]{32})\/(.+)$/i);
     if (!match) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("404 Not Found -NullPointerFile Server");
+      res.end(`404 Not Found - ${BOT_NAME} File Server`);
       return;
     }
 

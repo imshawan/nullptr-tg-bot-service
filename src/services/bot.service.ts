@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { BOT_NAME } from "@/config";
 import { ITelegramClient } from "@/domain/telegram/telegram-client.interface";
 import { ILlmProvider, ChatMessage } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
@@ -48,10 +49,10 @@ export class BotService {
   }
 
   /**
-   * InitializesNullPointerbot, registers Telegram slash commands, and verifies LLM & Downloader readiness.
+   * Initializes bot service, registers Telegram slash commands, and verifies LLM & Downloader readiness.
    */
   public async init(): Promise<void> {
-    this.logger.info("Initializing NullPointer Service...");
+    this.logger.info(`Initializing ${BOT_NAME} Service...`);
 
     // 1. Register commands with Telegram to display slash menu popup
     const botCommands = this.commandRegistry.getBotCommands();
@@ -62,11 +63,11 @@ export class BotService {
     const health = await this.llm.checkHealth();
     if (health.ok) {
       this.logger.info(
-        `[nullptr] Connected to LLM host (${this.llm.getHost()}). Active model: ${this.llm.getActiveModel()} | Models found: ${health.availableModelsCount}`
+        `[${BOT_NAME}] Connected to LLM host (${this.llm.getHost()}). Active model: ${this.llm.getActiveModel()} | Models found: ${health.availableModelsCount}`
       );
     } else {
       this.logger.warn(
-        `[nullptr] LLM host (${this.llm.getHost()}) unreachable: ${health.error}. (Verify Oracle Cloud security lists & iptables).`
+        `[${BOT_NAME}] LLM host (${this.llm.getHost()}) unreachable: ${health.error}. (Verify Oracle Cloud security lists & iptables).`
       );
     }
   }
@@ -76,7 +77,7 @@ export class BotService {
    */
   public async start(): Promise<void> {
     this.isRunning = true;
-    this.logger.info("Starting NullPointer Telegram long-polling loop...");
+    this.logger.info(`Starting ${BOT_NAME} Telegram long-polling loop...`);
 
     while (this.isRunning) {
       try {
@@ -89,23 +90,23 @@ export class BotService {
         if (!this.isRunning) break;
 
         if (err instanceof TelegramApiError && err.errorCode === 429 && err.retryAfter) {
-          this.logger.warn(`[nullptr] Rate-limited by Telegram during getUpdates. Waiting ${err.retryAfter}s...`);
+          this.logger.warn(`[${BOT_NAME}] Rate-limited by Telegram during getUpdates. Waiting ${err.retryAfter}s...`);
           await new Promise((r) => setTimeout(r, err.retryAfter! * 1000));
         } else {
-          this.logger.error("[nullptr] Polling error:", err);
+          this.logger.error(`[${BOT_NAME}] Polling error:`, err);
           await new Promise((r) => setTimeout(r, 4000));
         }
       }
     }
 
-    this.logger.info("NullPointer Telegram polling stopped.");
+    this.logger.info(`${BOT_NAME} Telegram polling stopped.`);
   }
 
   /**
    * Stops the polling loop gracefully
    */
   public stop(): void {
-    this.logger.info("Shutting down NullPointer service...");
+    this.logger.info(`Shutting down ${BOT_NAME} service...`);
     this.isRunning = false;
   }
 
@@ -142,7 +143,7 @@ export class BotService {
         );
         await this.telegram.answerCallbackQuery({
           callback_query_id: update.callback_query.id,
-          text: "⛔ Access denied. You are not authorized to use nullptr.",
+          text: `⛔ Access denied. You are not authorized to use ${BOT_NAME}.`,
         });
         return;
       }
@@ -159,11 +160,11 @@ export class BotService {
     // Security Gate / Authorization
     if (!this.isUserAuthorized(msg.from)) {
       this.logger.warn(
-        `[Security] Blocked unauthorized access attempt to nullptr from ID: ${senderId ?? "unknown"} (@${msg.from?.username || "unknown"})`
+        `[Security] Blocked unauthorized access attempt to ${BOT_NAME} from ID: ${senderId ?? "unknown"} (@${msg.from?.username || "unknown"})`
       );
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⛔ Access denied. Your Telegram ID (${senderId ?? "unknown"}) is not authorized to interact with *NullPointer*.`,
+        text: `⛔ Access denied. Your Telegram ID (${senderId ?? "unknown"}) is not authorized to interact with *${BOT_NAME}*.`,
       });
       return;
     }
@@ -201,10 +202,10 @@ export class BotService {
       await this.sessionStore.appendMessage(chatId, { role: "assistant", content: reply });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[nullptr] Error during LLM chat processing: ${errMsg}`, err);
+      this.logger.error(`[${BOT_NAME}] Error during LLM chat processing: ${errMsg}`, err);
       await this.telegram.sendMessage({
         chat_id: chatId,
-        text: `⚠️ Error communicating with LLM at ${this.llm.getHost()}:\n${errMsg}`,
+        text: `⚠️ [${BOT_NAME}] Error communicating with LLM at ${this.llm.getHost()}:\n${errMsg}`,
       });
     }
   }
@@ -215,7 +216,7 @@ export class BotService {
   private async handleDirectUrlSubmission(chatId: number, url: string): Promise<void> {
     const initMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: "🔍 *NullPointer* detected media link. Fetching details & qualities...",
+      text: `🔍 *${BOT_NAME}* detected media link. Fetching details & qualities...`,
       parse_mode: "Markdown",
     });
 
@@ -236,7 +237,7 @@ export class BotService {
       await this.telegram.editMessageText({
         chat_id: chatId,
         message_id: initMsg.message_id,
-        text: `⚠️ Could not inspect media link:\n${errMsg}`,
+        text: `⚠️ [${BOT_NAME}] Could not inspect media link:\n${errMsg}`,
       });
     }
   }
@@ -250,7 +251,7 @@ export class BotService {
 
     await this.telegram.answerCallbackQuery({
       callback_query_id: query.id,
-      text: "NullPointer is processing your request...",
+      text: `${BOT_NAME} is processing your request...`,
     });
 
     const parts = data.split(":");
@@ -535,7 +536,7 @@ export class BotService {
     const { url, format, quality, audioBitrate, title, progressMessageId, token } = options;
     const qualityLabel = quality !== "audio" ? ` · ${quality}` : audioBitrate ? ` · ${audioBitrate}k` : "";
     const labelTitle = title ? `*${title}* ` : "";
-    const progressText = `⏳ *NullPointer* is downloading: ${labelTitle}(${format.toUpperCase()}${qualityLabel})...\nPlease wait.`;
+    const progressText = `⏳ *${BOT_NAME}* is downloading: ${labelTitle}(${format.toUpperCase()}${qualityLabel})...\nPlease wait.`;
 
     let activeMsgId = progressMessageId;
     if (activeMsgId) {
@@ -743,7 +744,7 @@ export class BotService {
         chat_id: chatId,
         filePath: result.filePath,
         title: result.title,
-        caption: `🎵 *${result.title}* via nullptr`,
+        caption: `🎵 *${result.title}* via ${BOT_NAME}`,
         parse_mode: "Markdown",
       });
 
@@ -758,7 +759,7 @@ export class BotService {
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[nullptr] Download execution failed for ${url}: ${errMsg}`, err);
+      this.logger.error(`[${BOT_NAME}] Download execution failed for ${url}: ${errMsg}`, err);
       if (activeMsgId) {
         await this.telegram.editMessageText({
           chat_id: chatId,
@@ -836,7 +837,7 @@ export class BotService {
     // Placeholder message
     const placeholderMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: "NullPointer is thinking...",
+      text: `${BOT_NAME} is thinking...`,
     });
     const placeholderMsgId = placeholderMsg.message_id;
 
@@ -861,7 +862,7 @@ export class BotService {
           now - lastEditTime >= throttleMs
         ) {
           const cleanText = cleanDownloadDirective(fullContent);
-          const previewText = cleanText ? `${cleanText} ▍` : "NullPointer is processing your request... ▍";
+          const previewText = cleanText ? `${cleanText} ▍` : `${BOT_NAME} is processing your request... ▍`;
           if (previewText !== lastEditedText) {
             try {
               await this.telegram.editMessageText({

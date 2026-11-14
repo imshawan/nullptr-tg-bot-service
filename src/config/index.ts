@@ -3,6 +3,8 @@ import { z } from "zod";
 
 dotenv.config();
 
+export const DEFAULT_BOT_NAME = "NullPointer";
+
 export const MEDIA_DOWNLOADER_INSTRUCTIONS = `CAPABILITIES & MEDIA DOWNLOADS:
 You have a built-in media downloader powered by yt-dlp. You can download and extract videos, audio, and media from YouTube, Twitter/X, Instagram, TikTok, Reddit, SoundCloud, Facebook, and 1000+ supported sites.
 
@@ -30,7 +32,7 @@ RULES:
 - Never say you cannot download files or that you lack tools. You have full downloading capability.
 - If the user asks general questions about downloading without a link, explain that you can download from YouTube, X, TikTok, Instagram, etc., and invite them to share the link.`;
 
-export const DEFAULT_SYSTEM_PROMPT = `You are NullPtr, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer.
+export const DEFAULT_SYSTEM_PROMPT = `You are ${DEFAULT_BOT_NAME}, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer.
 
 ${MEDIA_DOWNLOADER_INSTRUCTIONS}`;
 
@@ -38,6 +40,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.string().default("3000").transform((val) => parseInt(val, 10)),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  BOT_NAME: z.string().default(DEFAULT_BOT_NAME),
 
   // Telegram configuration
   TELEGRAM_TOKEN: z
@@ -86,6 +89,11 @@ try {
 export const env: EnvConfig = parsedEnv;
 
 /**
+ * Global constant representing the bot's name across logs, system prompts, commands, and views.
+ */
+export const BOT_NAME: string = env.BOT_NAME;
+
+/**
  * Generic config getter by key.
  */
 export function getConfig<K extends keyof EnvConfig>(key: K): EnvConfig[K] {
@@ -95,6 +103,7 @@ export function getConfig<K extends keyof EnvConfig>(key: K): EnvConfig[K] {
 /**
  * Individual getter functions matching getConfig<EnvKey>() pattern.
  */
+export const getConfigBotName = (): string => BOT_NAME;
 export const getConfigNodeEnv = (): "development" | "production" | "test" => env.NODE_ENV;
 export const getConfigPort = (): number => env.PORT;
 export const getConfigLogLevel = (): "debug" | "info" | "warn" | "error" => env.LOG_LEVEL;

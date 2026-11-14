@@ -1,8 +1,9 @@
+import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 
 export class StatusCommand implements ICommandHandler {
   public readonly command = "status";
-  public readonly description = "CheckNullPointer& Oracle Cloud connectivity";
+  public readonly description = `Check ${BOT_NAME} & Oracle Cloud connectivity`;
 
   public async execute(ctx: CommandContext): Promise<void> {
     const health = await ctx.llm.checkHealth();
@@ -13,7 +14,7 @@ export class StatusCommand implements ICommandHandler {
     let text: string;
     if (health.ok) {
       text = [
-        `🟢 *NullPointer - Status: Online*`,
+        `🟢 *${BOT_NAME} - Status: Online*`,
         `Latency: ${health.latencyMs}ms`,
         `Host: \`${host}\``,
         `Active model: \`${activeModel}\``,
@@ -22,7 +23,7 @@ export class StatusCommand implements ICommandHandler {
       ].join("\n");
     } else {
       text = [
-        `🔴 *NullPointer - Status: Offline / Unreachable*`,
+        `🔴 *${BOT_NAME} - Status: Offline / Unreachable*`,
         `Host: \`${host}\``,
         `Error: ${health.error}`,
         "",

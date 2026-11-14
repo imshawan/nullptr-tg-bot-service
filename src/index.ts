@@ -1,4 +1,5 @@
 import {
+  BOT_NAME,
   getConfigLogLevel,
   getConfigTelegramToken,
   getConfigAllowedUserIds,
@@ -36,13 +37,13 @@ import { StatusCommand } from "@/services/commands/status.command";
 
 async function bootstrap(): Promise<void> {
   // 1. Core logger initialization via config getter
-  const logger = new ConsoleLogger("nullptr", getConfigLogLevel());
-  logger.info("Starting NullPointer Service...");
+  const logger = new ConsoleLogger(BOT_NAME, getConfigLogLevel());
+  logger.info(`Starting ${BOT_NAME} Service...`);
 
   const allowedUserIds = getConfigAllowedUserIds();
   const allowedCount = allowedUserIds.size;
   logger.info(
-    `Security: ${allowedCount > 0 ? `${allowedCount} authorized user(s) configured for nullptr.` : "⚠️ Unrestricted access (no allowed IDs configured)!"}`
+    `Security: ${allowedCount > 0 ? `${allowedCount} authorized user(s) configured for ${BOT_NAME}.` : "⚠️ Unrestricted access (no allowed IDs configured)!"}`
   );
 
   // 2. Domain layer initialization using typed getters
@@ -103,12 +104,12 @@ async function bootstrap(): Promise<void> {
 
   // 6. Graceful shutdown handler
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}. Gracefully stopping NullPointer...`);
+    logger.info(`Received ${signal}. Gracefully stopping ${BOT_NAME}...`);
     botService.stop();
     await fileServer.stop();
     // Allow pending requests to complete cleanly
     setTimeout(() => {
-      logger.info("nullptr process exited.");
+      logger.info(`${BOT_NAME} process exited.`);
       process.exit(0);
     }, 1000).unref();
   };
@@ -117,11 +118,11 @@ async function bootstrap(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   process.on("unhandledRejection", (reason) => {
-    logger.error("[nullptr] Unhandled Promise Rejection:", reason);
+    logger.error(`[${BOT_NAME}] Unhandled Promise Rejection:`, reason);
   });
 
   process.on("uncaughtException", (error) => {
-    logger.error("[nullptr] Uncaught Exception thrown:", error);
+    logger.error(`[${BOT_NAME}] Uncaught Exception thrown:`, error);
     process.exit(1);
   });
 
@@ -131,6 +132,6 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((err: unknown) => {
-  console.error("Fatal startup error in nullptr:", err);
+  console.error(`Fatal startup error in ${BOT_NAME}:`, err);
   process.exit(1);
 });

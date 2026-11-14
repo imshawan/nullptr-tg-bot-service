@@ -1,4 +1,5 @@
 import { renderToString } from "preact-render-to-string";
+import { BOT_NAME } from "@/config";
 import { MainLayout } from "@/views/layouts/main.layout";
 import { BrandHeader } from "@/views/components/brand-header";
 import { BrandFooter } from "@/views/components/brand-footer";
@@ -12,7 +13,7 @@ export interface ErrorViewProps {
 
 export function ErrorView({ statusCode, title, message }: ErrorViewProps) {
   return (
-    <MainLayout title={`${statusCode} ${title} - nullptr`}>
+    <MainLayout title={`${statusCode} ${title} - ${BOT_NAME}`}>
       <div class="media-card">
         <BrandHeader badgeText={`${statusCode} Error`} isError={true} />
         <div class="error-card-content">

@@ -1,9 +1,10 @@
+import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 import { splitMessageText } from "@/utils/text.utils";
 
 export class ModelsCommand implements ICommandHandler {
   public readonly command = "models";
-  public readonly description = "List installed Ollama models for nullptr";
+  public readonly description = `List installed Ollama models for ${BOT_NAME}`;
 
   public async execute(ctx: CommandContext): Promise<void> {
     try {
@@ -13,7 +14,7 @@ export class ModelsCommand implements ICommandHandler {
       if (!models.length) {
         await ctx.telegram.sendMessage({
           chat_id: ctx.chatId,
-          text: "No models found on the Ollama host for nullptr.",
+          text: `No models found on the Ollama host for ${BOT_NAME}.`,
         });
         return;
       }
@@ -22,7 +23,7 @@ export class ModelsCommand implements ICommandHandler {
         .map((m) => (m.name === active ? `* ${m.name} (active)` : `  ${m.name}`))
         .join("\n");
 
-      const responseText = `Installed models for NullPointer:\n${listStr}\n\nSwitch active model using: /model <name>`;
+      const responseText = `Installed models for ${BOT_NAME}:\n${listStr}\n\nSwitch active model using: /model <name>`;
       const chunks = splitMessageText(responseText, 4000);
 
       for (const chunk of chunks) {

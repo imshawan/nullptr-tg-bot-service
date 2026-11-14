@@ -1,15 +1,16 @@
+import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 
 export class HelpCommand implements ICommandHandler {
   public readonly command = "help";
-  public readonly description = "Show NullPointer commands & guide";
+  public readonly description = `Show ${BOT_NAME} commands & guide`;
 
   public async execute(ctx: CommandContext): Promise<void> {
     const host = ctx.llm.getHost();
     const activeModel = ctx.llm.getActiveModel();
 
     const message = [
-      `📖 *NullPointer Guide*`,
+      `📖 *${BOT_NAME} Guide*`,
       `Connected to: \`${host}\``,
       `Active model: \`${activeModel}\``,
       `👨‍💻 *Created & Managed by:* Shawan Mandal ([@imshawan](https://imshawan.dev) · hello@imshawan.dev)`,
@@ -26,7 +27,7 @@ export class HelpCommand implements ICommandHandler {
       "💡 *Tips:*",
       "— Paste any YouTube, Twitter, Instagram, or TikTok link to download interactively.",
       "— Type `/` at any time to open the quick autocomplete menu.",
-      "—NullPointerautomatically remembers context up to the configured message limit.",
+      `— ${BOT_NAME} automatically remembers context up to the configured message limit.`,
       "— Switching models with `/model` clears previous conversation memory.",
     ].join("\n");
 

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { renderToString } from "preact-render-to-string";
+import { BOT_NAME } from "@/config";
 import { MainLayout } from "@/views/layouts/main.layout";
 import { BrandHeader } from "@/views/components/brand-header";
 import { MediaBox } from "@/views/components/media-box";
@@ -32,7 +33,7 @@ export function PlayerView({
   const expiresInHours = Math.max(1, Math.round((expiresAt - Date.now()) / (60 * 60 * 1000)));
 
   return (
-    <MainLayout title={`${title} - nullptr`}>
+    <MainLayout title={`${title} - ${BOT_NAME}`}>
       <div class="media-card">
         <BrandHeader badgeText={isAudio ? "Audio Ready" : "Video Ready"} />
         <MediaBox isAudio={isAudio} streamUrl={streamUrl} mimeType={mimeType} />
