@@ -1,11 +1,11 @@
 ---
 name: add-bot-command
 description: >-
-  Use this skill when adding or modifying slash commands in nullptr (NullPointer Bot).
+  Use this skill when adding or modifying slash commands in NullPointer.
   Enforces the Command Pattern, Telegram menu registration, and execution context.
 ---
 
-# Adding a New Command to nullptr (NullPointer Bot)
+# Adding a New Command to NullPointer
 
 Follow this step-by-step workflow to implement a new slash command in nullptr.
 

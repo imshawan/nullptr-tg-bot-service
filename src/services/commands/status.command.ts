@@ -2,7 +2,7 @@ import { ICommandHandler, CommandContext } from "@/services/commands/command.int
 
 export class StatusCommand implements ICommandHandler {
   public readonly command = "status";
-  public readonly description = "Check nullptr & Oracle Cloud connectivity";
+  public readonly description = "CheckNullPointer& Oracle Cloud connectivity";
 
   public async execute(ctx: CommandContext): Promise<void> {
     const health = await ctx.llm.checkHealth();
@@ -13,7 +13,7 @@ export class StatusCommand implements ICommandHandler {
     let text: string;
     if (health.ok) {
       text = [
-        `🟢 *nullptr (NullPointer Bot) - Status: Online*`,
+        `🟢 *NullPointer - Status: Online*`,
         `Latency: ${health.latencyMs}ms`,
         `Host: \`${host}\``,
         `Active model: \`${activeModel}\``,
@@ -22,7 +22,7 @@ export class StatusCommand implements ICommandHandler {
       ].join("\n");
     } else {
       text = [
-        `🔴 *nullptr (NullPointer Bot) - Status: Offline / Unreachable*`,
+        `🔴 *NullPointer - Status: Offline / Unreachable*`,
         `Host: \`${host}\``,
         `Error: ${health.error}`,
         "",

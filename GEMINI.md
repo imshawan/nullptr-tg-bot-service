@@ -1,3 +1,3 @@
-# GEMINI.md — Developer Rules for nullptr (NullPointer Bot)
+# GEMINI.md — Developer Rules for NullPointer
 
 @[AGENTS.md](./AGENTS.md)

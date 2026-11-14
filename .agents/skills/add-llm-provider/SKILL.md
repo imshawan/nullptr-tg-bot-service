@@ -2,12 +2,12 @@
 name: add-llm-provider
 description: >-
   Use this skill when adding or replacing LLM inference providers (e.g. OpenAI, Anthropic Claude,
-  Gemini, vLLM) in nullptr (NullPointer Bot). Enforces the ILlmProvider interface.
+  Gemini, vLLM) in NullPointer. Enforces the ILlmProvider interface.
 ---
 
-# Adding an LLM Provider to nullptr (NullPointer Bot)
+# Adding an LLM Provider to NullPointer
 
-nullptr abstracts all LLM communication behind the `ILlmProvider` interface in `src/domain/llm/llm-provider.interface.ts`.
+NullPointer abstracts all LLM communication behind the `ILlmProvider` interface in `src/domain/llm/llm-provider.interface.ts`.
 
 ---
 

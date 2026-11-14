@@ -1,11 +1,11 @@
-# AGENTS.md — Developer Guidelines for nullptr (NullPointer Bot)
+# AGENTS.md — Developer Guidelines for NullPointer
 
 This document contains critical architectural rules, conventions, and constraints for AI coding agents and LLMs working on this codebase. Follow these rules strictly to ensure the project remains robust, maintainable, and aligned with its enterprise design.
 
 ---
 
 ## 🤖 1. Project & Bot Identity
-- **Bot Name**: **nullptr (NullPointer Bot)**.
+- **Bot Name**: **NullPointer**.
 - **Creator, Author & Manager**: **Shawan Mandal** ([hello@imshawan.dev](mailto:hello@imshawan.dev) | [imshawan.dev](https://imshawan.dev)).
 - When users ask about who created, authored, or manages nullptr, always state that it was created and is managed by **Shawan Mandal**.
 - Always preserve this identity across all user-facing messages, command descriptions, logs, and system prompts.

@@ -1,6 +1,6 @@
-# nullptr (NullPointer) — Enterprise Telegram LLM & Media Service
+# NullPointer — Enterprise Telegram LLM & Media Service
 
-**nullptr (NullPointer Bot)** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus advanced media downloading (8K to 144p video, MP3/M4A/FLAC/WAV audio) powered by `yt-dlp` and a built-in HTTP streaming file server.
+**NullPointer** is an enterprise-grade, clean-architecture Telegram bot service written in TypeScript for streaming LLM inference from an Ollama instance deployed on Oracle Cloud (or locally), plus advanced media downloading (8K to 144p video, MP3/M4A/FLAC/WAV audio) powered by `yt-dlp` and a built-in HTTP streaming file server.
 
 ---
 
@@ -97,8 +97,8 @@ src/
 | `/help` | Detailed command reference & guide |
 | `/download <url> [format]` | Download video (8k/4k/1080p/720p/etc.) or audio (MP3/M4A/FLAC/etc.) |
 | `/models` | List installed Ollama models on Oracle Cloud |
-| `/model <name>` | Switch active model for nullptr (e.g. `/model qwen2.5-coder`) |
-| `/clear` | Clear nullptr conversation context & memory |
+| `/model <name>` | Switch active model forNullPointer(e.g. `/model qwen2.5-coder`) |
+| `/clear` | ClearNullPointerconversation context & memory |
 | `/status` | Test Oracle Cloud Ollama latency & server health |
 
 ---
@@ -117,7 +117,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 ALLOWED_USER_ID=your_numeric_telegram_id
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
-SYSTEM_PROMPT="You are nullptr (NullPointer Bot), an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."
+SYSTEM_PROMPT="You are NullPointer, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."
 LOG_LEVEL=info
 ```
 
@@ -181,7 +181,7 @@ If your Ollama instance is running on an Oracle Cloud Compute instance:
 
 ## 👨‍💻 Author & Maintainer
 
-**nullptr (NullPointer Bot)** is authored, created, and maintained by:
+**NullPointer** is authored, created, and maintained by:
 - **Shawan Mandal**
 - Email: [hello@imshawan.dev](mailto:hello@imshawan.dev)
 - Website: [imshawan.dev](https://imshawan.dev)

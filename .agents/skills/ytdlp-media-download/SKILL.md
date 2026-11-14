@@ -6,9 +6,9 @@ description: >-
   Telegram upload constraints, and tubesnag-desktop patterns.
 ---
 
-# nullptr (NullPointer Bot) — yt-dlp Media Downloader Subsystem
+# NullPointer — yt-dlp Media Downloader Subsystem
 
-nullptr includes a high-performance media downloader built on **yt-dlp**, designed using the proven architecture, format cascades, and UX patterns from the `tubesnag-desktop` project.
+NullPointer includes a high-performance media downloader built on **yt-dlp**, designed using the proven architecture, format cascades, and UX patterns from the `tubesnag-desktop` project.
 
 ---
 
@@ -35,7 +35,7 @@ src/services/file-server/
 - **Direct Link Paste**: Simply sending a valid URL (YouTube, Twitter/X, Instagram, TikTok, Soundcloud, Reddit, etc.) triggers nullptr's interactive downloader.
 
 ### 2. 2-Step Hierarchical Drilldown UX (Option A with 1-Tap Quick Actions)
-When a link is submitted without an explicit format, nullptr probes video metadata and renders a clean 2-step menu that prevents button clutter while offering every possible resolution and format:
+When a link is submitted without an explicit format,NullPointerprobes video metadata and renders a clean 2-step menu that prevents button clutter while offering every possible resolution and format:
 
 - **Main Menu**:
   - `⚡ Quick Best (MP4)`: Instant 1-tap download of the highest available video stream in an MP4 container.
@@ -93,7 +93,7 @@ At runtime, `YtDlpDownloader.ensureBinary()` and `ensureFfmpegBinary()` detect `
 - **Force IPv4 (`--force-ipv4`)**: Prevents yt-dlp from utilizing datacenter IPv6 subnets, which YouTube blocks uniformly across cloud providers.
 - **Node.js JavaScript Challenge Solver**: Directly points to the host's active Node.js executable via `--js-runtimes "node:${process.execPath}"` and enriches `PATH` in `spawn()`, ensuring yt-dlp can always execute YouTube's n-challenge and signature deciphering even under restrictive systemd or NVM environments.
 - **Multi-Tier Client Strategy**: Prioritizes `web_embedded` and `tv` clients that avoid GVS PO Token constraints.
-- **Federated Proxy Stream Fallback**: When direct `yt-dlp` downloading encounters BotGuard on flagged cloud IPs without cookies, nullptr automatically routes to high-availability federated stream instances and downloads/remuxes directly via pre-bundled `ffmpeg`.
+- **Federated Proxy Stream Fallback**: When direct `yt-dlp` downloading encounters BotGuard on flagged cloud IPs without cookies,NullPointerautomatically routes to high-availability federated stream instances and downloads/remuxes directly via pre-bundled `ffmpeg`.
 - **Tubesnag-Style Error Mapping**: Friendly, human-readable error explanations for bot challenges, private videos, age restrictions, and missing formats.
 - **Proxy Support**: Supports `YTDLP_PROXY` in `.env` if an outbound residential/SOCKS5 proxy is configured.
 

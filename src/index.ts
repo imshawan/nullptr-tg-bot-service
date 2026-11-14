@@ -37,7 +37,7 @@ import { StatusCommand } from "@/services/commands/status.command";
 async function bootstrap(): Promise<void> {
   // 1. Core logger initialization via config getter
   const logger = new ConsoleLogger("nullptr", getConfigLogLevel());
-  logger.info("Starting nullptr (NullPointer Bot) Service...");
+  logger.info("Starting NullPointer Service...");
 
   const allowedUserIds = getConfigAllowedUserIds();
   const allowedCount = allowedUserIds.size;
@@ -103,7 +103,7 @@ async function bootstrap(): Promise<void> {
 
   // 6. Graceful shutdown handler
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}. Gracefully stopping nullptr (NullPointer Bot)...`);
+    logger.info(`Received ${signal}. Gracefully stopping NullPointer...`);
     botService.stop();
     await fileServer.stop();
     // Allow pending requests to complete cleanly

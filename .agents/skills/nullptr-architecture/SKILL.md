@@ -2,12 +2,12 @@
 name: nullptr-architecture
 description: >-
   Use this skill to understand the Clean Architecture, layer boundaries, path aliases,
-  centralized configuration, and core invariants of nullptr (NullPointer Bot).
+  centralized configuration, and core invariants of NullPointer.
 ---
 
-# nullptr (NullPointer Bot) — Architecture & Invariants Guide
+# NullPointer — Architecture & Invariants Guide
 
-This skill guides agents and LLMs on maintaining the architectural integrity of **nullptr (NullPointer Bot)**.
+This skill guides agents and LLMs on maintaining the architectural integrity of **NullPointer**.
 
 ---
 
@@ -51,5 +51,5 @@ When editing or generating code in this repository:
 - [ ] **No `.js` extensions**: Do not write `.js` in TypeScript imports.
 - [ ] **Use `@/*` aliases**: Always use `@/core/...`, `@/domain/...`, `@/services/...`, `@/utils/...`.
 - [ ] **Media Delivery Invariant**: ALL video downloads are hosted through the built-in HTTP File Server and NEVER uploaded to Telegram chat. Audios $\le 50\text{ MB}$ are uploaded via `sendAudio`.
-- [ ] **Preserve bot identity & creator**: Keep `"nullptr (NullPointer Bot)"` as the bot identity and attribute creation & management to **Shawan Mandal** (`hello@imshawan.dev`).
+- [ ] **Preserve bot identity & creator**: Keep `"NullPointer"` as the bot identity and attribute creation & management to **Shawan Mandal** (`hello@imshawan.dev`).
 - [ ] **Verify builds**: Run `npm run typecheck` and `npm run build` after making changes.

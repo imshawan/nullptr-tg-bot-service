@@ -22,7 +22,7 @@ export class ModelsCommand implements ICommandHandler {
         .map((m) => (m.name === active ? `* ${m.name} (active)` : `  ${m.name}`))
         .join("\n");
 
-      const responseText = `Installed models for nullptr (NullPointer Bot):\n${listStr}\n\nSwitch active model using: /model <name>`;
+      const responseText = `Installed models for NullPointer:\n${listStr}\n\nSwitch active model using: /model <name>`;
       const chunks = splitMessageText(responseText, 4000);
 
       for (const chunk of chunks) {
@@ -35,7 +35,7 @@ export class ModelsCommand implements ICommandHandler {
       const message = err instanceof Error ? err.message : String(err);
       await ctx.telegram.sendMessage({
         chat_id: ctx.chatId,
-        text: `[nullptr] Error fetching models from ${ctx.llm.getHost()}:\n${message}`,
+        text: `Error fetching models from ${ctx.llm.getHost()}:\n${message}`,
       });
     }
   }
