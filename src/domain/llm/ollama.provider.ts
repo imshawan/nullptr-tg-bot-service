@@ -125,6 +125,9 @@ export class OllamaProvider implements ILlmProvider {
       requestBody.options = {
         num_ctx: this.numCtx,
       };
+      this.logger.info(`Ollama context window (num_ctx) set to: ${this.numCtx}`);
+    } else {
+      this.logger.info("Ollama context window (num_ctx) not specified, using Ollama server default");
     }
 
     let res: Response;
