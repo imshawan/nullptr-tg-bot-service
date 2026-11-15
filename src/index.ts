@@ -13,6 +13,7 @@ import {
   getConfigOllamaHost,
   getConfigOllamaModel,
   getConfigOllamaAuth,
+  getConfigOllamaNumCtx,
   getConfigSystemPrompt,
   getConfigMaxHistoryMessages,
   getConfigYtDlpPath,
@@ -61,6 +62,7 @@ async function bootstrap(): Promise<void> {
     defaultModel: getConfigOllamaModel(),
     authHeader: getConfigOllamaAuth(),
     systemPrompt: getConfigSystemPrompt(),
+    numCtx: getConfigOllamaNumCtx(),
     logger,
   });
 

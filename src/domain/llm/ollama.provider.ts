@@ -35,6 +35,7 @@ export class OllamaProvider implements ILlmProvider {
   private readonly host: string;
   private readonly authHeader?: string;
   private readonly systemPrompt?: string;
+  private readonly numCtx?: number;
   private readonly logger: ILogger;
 
   constructor(options: {
@@ -42,12 +43,14 @@ export class OllamaProvider implements ILlmProvider {
     defaultModel: string;
     authHeader?: string;
     systemPrompt?: string;
+    numCtx?: number;
     logger: ILogger;
   }) {
     this.host = options.host.replace(/\/+$/, "");
     this.activeModel = options.defaultModel;
     this.authHeader = options.authHeader;
     this.systemPrompt = options.systemPrompt;
+    this.numCtx = options.numCtx;
     this.logger = options.logger.child("OllamaProvider");
   }
 
@@ -112,16 +115,24 @@ export class OllamaProvider implements ILlmProvider {
     }
     payloadMessages.push(...messages);
 
+    const requestBody: Record<string, unknown> = {
+      model: this.activeModel,
+      messages: payloadMessages,
+      stream: true,
+    };
+
+    if (typeof this.numCtx === "number" && this.numCtx > 0) {
+      requestBody.options = {
+        num_ctx: this.numCtx,
+      };
+    }
+
     let res: Response;
     try {
       res = await fetch(url, {
         method: "POST",
         headers: this.getHeaders(),
-        body: JSON.stringify({
-          model: this.activeModel,
-          messages: payloadMessages,
-          stream: true,
-        }),
+        body: JSON.stringify(requestBody),
         signal,
       });
     } catch (err: unknown) {

@@ -145,6 +145,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 ALLOWED_USER_IDS=uxyg4nry4,xnhweeh  # Comma-separated usernames or numeric IDs
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
+OLLAMA_NUM_CTX=2048
 ALLOW_MATURE_CONTENT=true
 USER_TIMEZONE=Asia/Kolkata
 SYSTEM_PROMPT="You are NullPointer, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."
