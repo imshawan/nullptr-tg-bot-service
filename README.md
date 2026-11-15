@@ -20,6 +20,13 @@ src/
 │   │   └── console-logger.ts               # Structured logger with levels & timestamps
 │   └── types/
 │       └── common.types.ts                 # Shared system types & lifecycle interfaces
+├── prompts/                                # Prompt Engineering & System Directives
+│   ├── prompt.constants.ts                 # Default bot name and creator metadata
+│   ├── persona.prompt.ts                   # Bot persona & identity attribution
+│   ├── downloader.prompt.ts                # yt-dlp trigger directives & formatting rules
+│   ├── identity.prompt.ts                  # User identity context & dynamic prompt builders
+│   ├── system.prompt.ts                    # Composed default system prompt & full builder
+│   └── index.ts                            # Central barrel export for @/prompts
 ├── domain/                                 # Domain Core
 │   ├── downloader/                         # Media Downloader Subsystem (yt-dlp)
 │   │   ├── downloader.types.ts             # Formats, qualities & metadata interfaces
@@ -44,7 +51,8 @@ src/
 │   │   ├── models.command.ts               # /models list
 │   │   ├── model.command.ts                # /model <name> switch
 │   │   ├── clear.command.ts                # /clear context
-│   │   └── status.command.ts               # /status latency & health
+│   │   ├── status.command.ts               # /status latency & health
+│   │   └── whoami.command.ts               # /whoami profile & authorization info
 │   ├── downloader/
 │   │   └── downloader-ui.helper.ts         # 2-step hierarchical drilldown menus & session cache
 │   ├── file-server/

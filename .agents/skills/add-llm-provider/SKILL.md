@@ -111,6 +111,9 @@ const llmProvider = new CustomLlmProvider({
 
 `BotService`, `CommandRegistry`, and all slash commands will work immediately without any modification!
 
+> [!NOTE]
+> System prompts, persona instructions, and user identity context are centralized in `src/prompts/` and provided via `getConfigSystemPrompt()`. Ensure your provider implementation forwards messages with `role: "system"` to the upstream LLM API.
+
 ---
 
 ## 🧪 Step 5: Verification

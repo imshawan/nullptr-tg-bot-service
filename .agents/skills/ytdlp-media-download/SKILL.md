@@ -15,6 +15,8 @@ NullPointer includes a high-performance media downloader built on **yt-dlp**, de
 ## 🏛️ Downloader Architecture
 
 ```
+src/prompts/
+└── downloader.prompt.ts      # LLM media download directives, rules & few-shot examples ([DOWNLOAD: <url> [format]])
 src/domain/downloader/
 ├── downloader.types.ts       # MediaFormat, MediaQuality, AudioBitrate, VideoResolutionOption, MediaInfo, DownloadResult
 ├── downloader.interface.ts   # IDownloaderService contract

@@ -52,28 +52,34 @@ This document contains critical architectural rules, conventions, and constraint
 - **All video downloads** must be hosted and served exclusively via the built-in HTTP `fileServer` (`FileServerService`). Never upload videos directly into Telegram chat (`telegram.sendVideo`), regardless of file size.
 - **Audio downloads** $\le 50\text{ MB}$ are delivered directly to Telegram chat via `telegram.sendAudio`. Files $> 50\text{ MB}$ route to `fileServer`.
 
+### E. Zero Hardcoded Prompts in Services/Config
+- **Never** hardcode LLM prompts, persona instructions, media downloader tags, or user context templates inside `src/config/`, `src/services/`, or `src/domain/`.
+- All prompt templates, personas, system instructions, and dynamic prompt builders must reside strictly inside `src/prompts/` (`@/prompts`).
+
 ---
 
 ## 🏛️ 3. Layer Separation & Design Patterns
 
 1. **`src/config/` (Configuration Layer)**:
    - Holds environment schema, typed getters, and fail-fast validation.
-2. **`src/core/` (Cross-Cutting Infrastructure)**:
+2. **`src/prompts/` (Prompt Engineering & LLM Directives)**:
+   - Holds system persona definitions, yt-dlp media downloader directives, user identity context templates, and prompt composition helpers (`buildDefaultSystemPrompt`, `buildFullSystemPrompt`, `buildUserContextPrompt`).
+3. **`src/core/` (Cross-Cutting Infrastructure)**:
    - Contains custom typed errors (`AppError`, `TelegramApiError`, `LlmProviderError`), structured logging (`ConsoleLogger`), and common types.
-3. **`src/domain/` (Business Entities & Abstractions)**:
+4. **`src/domain/` (Business Entities & Abstractions)**:
    - `domain/downloader/`: `IDownloaderService` interface, types, and `YtDlpDownloader`.
    - `domain/llm/`: `ILlmProvider` interface and concrete implementations (`OllamaProvider`).
    - `domain/session/`: `ISessionStore` interface and implementations (`InMemorySessionStore`).
    - `domain/telegram/`: `ITelegramClient` interface, Telegram client wrapper, and typed DTOs.
-4. **`src/services/` (Application Services & Command Pattern)**:
+5. **`src/services/` (Application Services & Command Pattern)**:
    - `services/commands/`: Individual command handlers implementing `ICommandHandler`.
    - `services/command.registry.ts`: Command dispatcher and `setMyCommands` mapper.
    - `services/downloader/`: `downloader-ui.helper.ts` (2-step hierarchical format/quality drilldown & session caching).
    - `services/file-server/`: `IFileServerService` interface and `FileServerService` (HTTP server for video streaming player & direct downloads).
    - `services/bot.service.ts`: Long-polling loop, message streaming, rate-limit backoff, link detection, and delivery routing.
-5. **`src/views/` (SSR Presentation Layer)**:
+6. **`src/views/` (SSR Presentation Layer)**:
    - Holds Preact TSX components (layouts, media players, meta tags, action buttons, error cards) rendered server-side to HTML strings via `preact-render-to-string`.
-6. **`src/index.ts` (Composition Root)**:
+7. **`src/index.ts` (Composition Root)**:
    - Pure Dependency Injection: instantiates configuration, logger, clients, providers, stores, command handlers, and orchestrator.
 
 ---

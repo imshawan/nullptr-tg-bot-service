@@ -17,8 +17,8 @@ import {
   detectDownloadIntent,
   detectWhoAmIIntent,
   formatWhoAmIResponse,
-  buildUserContextPrompt,
 } from "@/utils/text.utils";
+import { buildUserContextPrompt } from "@/prompts";
 import { TelegramApiError } from "@/core/errors/app-error";
 import {
   createDownloadSession,

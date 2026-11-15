@@ -1,5 +1,14 @@
 import { BOT_NAME } from "@/config";
 import { TelegramUser } from "@/domain/telegram/telegram.types";
+import {
+  isCreator,
+  formatUserFullName,
+  buildUserContextPrompt,
+  CREATOR_EMAIL,
+  CREATOR_WEBSITE,
+} from "@/prompts";
+
+export { isCreator, formatUserFullName, buildUserContextPrompt };
 
 /**
  * Splits text into chunks that do not exceed maxLength,
@@ -212,29 +221,6 @@ export function detectWhoAmIIntent(text: string): boolean {
 }
 
 /**
- * Checks whether a Telegram user is the creator and maintainer (Shawan Mandal).
- */
-export function isCreator(user?: TelegramUser): boolean {
-  if (!user) return false;
-  const username = user.username?.toLowerCase().replace(/^@/, "");
-  if (username === "imshawan") return true;
-
-  const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
-  if (fullName.includes("shawan")) return true;
-
-  return false;
-}
-
-/**
- * Formats a Telegram user's display name.
- */
-export function formatUserFullName(user?: TelegramUser): string {
-  if (!user) return "Unknown User";
-  const parts = [user.first_name, user.last_name].filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : user.username ? `@${user.username}` : `User ${user.id}`;
-}
-
-/**
  * Builds a formatted markdown identity response for the current Telegram user.
  */
 export function formatWhoAmIResponse(user?: TelegramUser, botName: string = BOT_NAME): string {
@@ -263,7 +249,7 @@ export function formatWhoAmIResponse(user?: TelegramUser, botName: string = BOT_
       `• *Telegram ID:* \`${user.id}\``,
       `• *Role:* Creator & Administrator`,
       `• *Language:* ${langText}`,
-      `• *Contact:* [hello@imshawan.dev](mailto:hello@imshawan.dev) · [imshawan.dev](https://www.imshawan.dev)`,
+      `• *Contact:* [${CREATOR_EMAIL}](mailto:${CREATOR_EMAIL}) · [${CREATOR_WEBSITE.replace(/^https?:\/\//, "")}](${CREATOR_WEBSITE})`,
       "",
       `All systems are operational and ready at your service!`,
     ].join("\n");
@@ -282,39 +268,6 @@ export function formatWhoAmIResponse(user?: TelegramUser, botName: string = BOT_
     `• *Language:* ${langText}`,
     "",
     `How can I assist you today? Type \`/help\` to view available commands.`,
-  ].join("\n");
-}
-
-/**
- * Builds user context metadata to inject into LLM system messages so the model is aware of who it is talking to.
- */
-export function buildUserContextPrompt(user?: TelegramUser, botName: string = BOT_NAME): string {
-  if (!user) {
-    return `[CURRENT USER INFORMATION]\n- User: Unknown / Anonymous`;
-  }
-
-  const creator = isCreator(user);
-  const fullName = formatUserFullName(user);
-  const username = user.username ? `@${user.username}` : "none";
-
-  if (creator) {
-    return [
-      `[CURRENT USER INFORMATION]`,
-      `- Name: ${fullName}`,
-      `- Username: ${username}`,
-      `- Telegram ID: ${user.id}`,
-      `- Role: Creator, Author & Maintainer of ${botName} (Shawan Mandal)`,
-      `- Note: This user created and manages you. If they ask about their identity, who they are, or their relationship to you, address them respectfully as your creator/maintainer (Shawan Mandal).`,
-    ].join("\n");
-  }
-
-  return [
-    `[CURRENT USER INFORMATION]`,
-    `- Name: ${fullName}`,
-    `- Username: ${username}`,
-    `- Telegram ID: ${user.id}`,
-    `- Role: Authorized User`,
-    `- Note: If this user asks about their identity or who they are, address them by their name (${fullName}) and username (${username}).`,
   ].join("\n");
 }
 

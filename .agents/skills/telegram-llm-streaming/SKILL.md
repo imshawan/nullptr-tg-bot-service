@@ -26,6 +26,7 @@ If you or another LLM need to locate or trace a feature from the original `bot.m
 | `chatHistory` Map | `InMemorySessionStore` (`ISessionStore`) | `src/domain/session/in-memory-session.store.ts` |
 | `processUpdate()` | `BotService.processUpdate()` | `src/services/bot.service.ts` |
 | `pollLoop()` | `BotService.start()` | `src/services/bot.service.ts` |
+| System prompt & personas | Modular prompt engineering subsystem | `src/prompts/` (`@/prompts`) |
 | Top-level environment vars | Centralized `getConfig*()` functions | `src/config/index.ts` |
 
 ---
