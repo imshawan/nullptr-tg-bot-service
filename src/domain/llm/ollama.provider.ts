@@ -52,6 +52,12 @@ export class OllamaProvider implements ILlmProvider {
     this.systemPrompt = options.systemPrompt;
     this.numCtx = options.numCtx;
     this.logger = options.logger.child("OllamaProvider");
+
+    if (typeof this.numCtx === "number" && this.numCtx > 0) {
+      this.logger.info(`Initialized with context window (num_ctx): ${this.numCtx}`);
+    } else {
+      this.logger.info("Initialized with server default context window");
+    }
   }
 
   public getActiveModel(): string {
