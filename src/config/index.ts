@@ -4,6 +4,7 @@ import {
   DEFAULT_BOT_NAME,
   DEFAULT_SYSTEM_PROMPT,
   USER_IDENTITY_INSTRUCTIONS,
+  MATURE_TOPIC_INSTRUCTIONS,
   MEDIA_DOWNLOADER_INSTRUCTIONS,
   buildFullSystemPrompt,
 } from "@/prompts";
@@ -14,6 +15,7 @@ export {
   DEFAULT_BOT_NAME,
   DEFAULT_SYSTEM_PROMPT,
   USER_IDENTITY_INSTRUCTIONS,
+  MATURE_TOPIC_INSTRUCTIONS,
   MEDIA_DOWNLOADER_INSTRUCTIONS,
 };
 
@@ -39,6 +41,10 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().optional(),
   OLLAMA_MODEL: z.string().default("qwen2.5-coder:latest"),
   OLLAMA_AUTH: z.string().optional(),
+  ALLOW_MATURE_CONTENT: z
+    .string()
+    .default("true")
+    .transform((val) => val.toLowerCase() === "true" || val === "1"),
   SYSTEM_PROMPT: z.string().default(DEFAULT_SYSTEM_PROMPT),
   MAX_HISTORY_MESSAGES: z.string().default("20").transform((val) => parseInt(val, 10)),
   LLM_QUERY_TIMEOUT_MS: z.string().default("600000").transform((val) => parseInt(val, 10)),
@@ -114,8 +120,9 @@ export const getConfigOllamaHost = (): string => {
 };
 export const getConfigOllamaModel = (): string => env.OLLAMA_MODEL;
 export const getConfigOllamaAuth = (): string | undefined => env.OLLAMA_AUTH;
+export const getConfigAllowMatureContent = (): boolean => env.ALLOW_MATURE_CONTENT;
 export const getConfigSystemPrompt = (): string =>
-  buildFullSystemPrompt(env.SYSTEM_PROMPT, env.BOT_NAME);
+  buildFullSystemPrompt(env.SYSTEM_PROMPT, env.BOT_NAME, env.ALLOW_MATURE_CONTENT);
 export const getConfigMaxHistoryMessages = (): number => env.MAX_HISTORY_MESSAGES;
 export const getConfigLlmQueryTimeoutMs = (): number => env.LLM_QUERY_TIMEOUT_MS;
 

@@ -27,6 +27,7 @@ src/
 │   ├── persona.prompt.ts                   # Bot persona, anti-robot rules & conversational tone
 │   ├── downloader.prompt.ts                # yt-dlp trigger directives & formatting rules
 │   ├── identity.prompt.ts                  # User identity context & dynamic prompt builders
+│   ├── mature.prompt.ts                    # Mature (18+) conversational scope & safety boundaries
 │   ├── temporal.prompt.ts                  # Real-time temporal & situational awareness builder
 │   ├── system.prompt.ts                    # Composed default system prompt & full builder
 │   └── index.ts                            # Central barrel export for @/prompts
@@ -144,6 +145,8 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 ALLOWED_USER_IDS=uxyg4nry4,xnhweeh  # Comma-separated usernames or numeric IDs
 OLLAMA_HOST=http://<ORACLE_CLOUD_IP>:11434
 OLLAMA_MODEL=qwen2.5-coder:latest
+ALLOW_MATURE_CONTENT=true
+USER_TIMEZONE=Asia/Kolkata
 SYSTEM_PROMPT="You are NullPointer, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev)."
 LOG_LEVEL=info
 ```

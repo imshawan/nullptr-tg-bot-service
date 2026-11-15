@@ -24,6 +24,7 @@ This skill guides agents and LLMs on maintaining the architectural integrity of 
    - `persona.prompt.ts`: Foundational persona prompt and identity attribution.
    - `downloader.prompt.ts`: yt-dlp trigger directives, formatting rules, and few-shot examples.
    - `identity.prompt.ts`: User identity guidelines and dynamic user context prompt builder (`buildUserContextPrompt`).
+   - `mature.prompt.ts`: Mature (18+) conversational scope directives and safety boundaries.
    - `temporal.prompt.ts`: Real-time situational temporal context builder (`buildTemporalPrompt`).
    - `system.prompt.ts`: Full system prompt composer (`buildDefaultSystemPrompt`, `buildFullSystemPrompt`).
    - `index.ts`: Central barrel export for `@/prompts`.
