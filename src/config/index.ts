@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { z } from "zod";
+import { ILogger } from "@/core/logger/logger.interface";
 import {
   DEFAULT_BOT_NAME,
   DEFAULT_SYSTEM_PROMPT,
@@ -138,3 +139,48 @@ export const getConfigMaxDownloadSizeMb = (): number => env.MAX_DOWNLOAD_SIZE_MB
 
 export const getConfigFileServerBaseUrl = (): string | undefined => env.FILE_SERVER_BASE_URL;
 export const getConfigDownloadLinkTtlMinutes = (): number => env.DOWNLOAD_LINK_TTL_MINUTES;
+
+/**
+ * Safely masks sensitive credential values for logs.
+ */
+function maskSecret(val?: string): string {
+  if (!val) return "[none]";
+  if (val.length <= 8) return "***";
+  return `${val.slice(0, 4)}...${val.slice(-4)}`;
+}
+
+/**
+ * Logs a structured, security-safe summary of all active environment configurations on startup.
+ */
+export function logConfiguration(logger: ILogger): void {
+  const cfgLogger = logger.child("Config");
+  const allowedUsers = getConfigAllowedUserIds();
+  const allowedUserSummary =
+    allowedUsers.size > 0
+      ? `${allowedUsers.size} user(s) (${Array.from(allowedUsers).join(", ")})`
+      : "unrestricted (all users allowed)";
+  const systemPromptStatus =
+    env.SYSTEM_PROMPT === DEFAULT_SYSTEM_PROMPT
+      ? "default"
+      : `custom (${env.SYSTEM_PROMPT.length} chars)`;
+
+  cfgLogger.info("⚙️ Active Environment Configuration (26 params):");
+  cfgLogger.info(
+    `• System & Runtime: BOT_NAME="${BOT_NAME}", NODE_ENV="${env.NODE_ENV}", LOG_LEVEL="${env.LOG_LEVEL}", USER_TIMEZONE="${env.USER_TIMEZONE}"`
+  );
+  cfgLogger.info(
+    `• Telegram API: TELEGRAM_TOKEN="${maskSecret(env.TELEGRAM_TOKEN)}", STREAM_EDIT_INTERVAL_MS=${env.STREAM_EDIT_INTERVAL_MS}ms, ALLOWED_USER_IDS=${allowedUserSummary}`
+  );
+  cfgLogger.info(
+    `• LLM Endpoint: OLLAMA_HOST="${getConfigOllamaHost()}"${env.OLLAMA_BASE_URL ? ` (via OLLAMA_BASE_URL)` : ""}, OLLAMA_MODEL="${env.OLLAMA_MODEL}", OLLAMA_AUTH=${env.OLLAMA_AUTH ? "[configured]" : "[none]"}`
+  );
+  cfgLogger.info(
+    `• LLM Hyperparameters: OLLAMA_NUM_CTX=${env.OLLAMA_NUM_CTX}, OLLAMA_TEMPERATURE=${env.OLLAMA_TEMPERATURE}, ALLOW_MATURE_CONTENT=${env.ALLOW_MATURE_CONTENT}, MAX_HISTORY_MESSAGES=${env.MAX_HISTORY_MESSAGES}, LLM_QUERY_TIMEOUT_MS=${env.LLM_QUERY_TIMEOUT_MS}ms, SYSTEM_PROMPT=[${systemPromptStatus}]`
+  );
+  cfgLogger.info(
+    `• HTTP File Server: PORT=${env.PORT}, FILE_SERVER_BASE_URL="${env.FILE_SERVER_BASE_URL || "[auto-detect]"}", DOWNLOAD_LINK_TTL_MINUTES=${env.DOWNLOAD_LINK_TTL_MINUTES}m`
+  );
+  cfgLogger.info(
+    `• Media Downloader (yt-dlp): MAX_DOWNLOAD_SIZE_MB=${env.MAX_DOWNLOAD_SIZE_MB}MB, YTDLP_PATH="${env.YTDLP_PATH || "[auto-detect]"}", FFMPEG_PATH="${env.FFMPEG_PATH || "[auto-detect]"}", YTDLP_PROXY="${env.YTDLP_PROXY || "[none]"}", DOWNLOAD_TEMP_DIR="${env.DOWNLOAD_TEMP_DIR || "[system-temp]"}"`
+  );
+}

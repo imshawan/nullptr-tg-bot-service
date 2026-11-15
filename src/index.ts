@@ -24,6 +24,7 @@ import {
   getConfigPort,
   getConfigFileServerBaseUrl,
   getConfigDownloadLinkTtlMinutes,
+  logConfiguration,
 } from "@/config";
 import { ConsoleLogger } from "@/core/logger/console-logger";
 import { TelegramClient } from "@/domain/telegram/telegram.client";
@@ -48,6 +49,9 @@ async function bootstrap(): Promise<void> {
   // 1. Core logger initialization via config getter
   const logger = new ConsoleLogger(BOT_NAME, getConfigLogLevel());
   logger.info(`Starting ${BOT_NAME} Service...`);
+
+  // Log full environment configuration summary on startup
+  logConfiguration(logger);
 
   const allowedUserIds = getConfigAllowedUserIds();
   const allowedCount = allowedUserIds.size;
