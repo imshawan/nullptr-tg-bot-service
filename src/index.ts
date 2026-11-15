@@ -9,6 +9,7 @@ import {
   getConfigTelegramToken,
   getConfigAllowedUserIds,
   getConfigStreamEditIntervalMs,
+  getConfigUserTimezone,
   getConfigOllamaHost,
   getConfigOllamaModel,
   getConfigOllamaAuth,
@@ -99,6 +100,7 @@ async function bootstrap(): Promise<void> {
     {
       allowedUserIds,
       streamEditIntervalMs: getConfigStreamEditIntervalMs(),
+      timezone: getConfigUserTimezone(),
     },
     telegramClient,
     llmProvider,

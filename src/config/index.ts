@@ -32,6 +32,7 @@ const envSchema = z.object({
   ALLOWED_USER_ID: z.string().optional(),
   ALLOWED_USER_IDS: z.string().optional(),
   STREAM_EDIT_INTERVAL_MS: z.string().default("2000").transform((val) => parseInt(val, 10)),
+  USER_TIMEZONE: z.string().default("Asia/Kolkata"),
 
   // LLM / Ollama configuration
   OLLAMA_HOST: z.string().default("http://127.0.0.1:11434"),
@@ -91,6 +92,7 @@ export const getConfigLogLevel = (): "debug" | "info" | "warn" | "error" => env.
 
 export const getConfigTelegramToken = (): string => env.TELEGRAM_TOKEN;
 export const getConfigStreamEditIntervalMs = (): number => env.STREAM_EDIT_INTERVAL_MS;
+export const getConfigUserTimezone = (): string => env.USER_TIMEZONE;
 
 export const getConfigAllowedUserIds = (): Set<string> => {
   const rawAllowed = [env.ALLOWED_USER_IDS, env.ALLOWED_USER_ID].filter(Boolean).join(",");

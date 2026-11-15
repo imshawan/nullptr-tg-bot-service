@@ -24,9 +24,10 @@ src/
 │       └── common.types.ts                 # Shared system types & lifecycle interfaces
 ├── prompts/                                # Prompt Engineering & System Directives
 │   ├── prompt.constants.ts                 # Default bot name and creator metadata
-│   ├── persona.prompt.ts                   # Bot persona & identity attribution
+│   ├── persona.prompt.ts                   # Bot persona, anti-robot rules & conversational tone
 │   ├── downloader.prompt.ts                # yt-dlp trigger directives & formatting rules
 │   ├── identity.prompt.ts                  # User identity context & dynamic prompt builders
+│   ├── temporal.prompt.ts                  # Real-time temporal & situational awareness builder
 │   ├── system.prompt.ts                    # Composed default system prompt & full builder
 │   └── index.ts                            # Central barrel export for @/prompts
 ├── domain/                                 # Domain Core

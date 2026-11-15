@@ -1,5 +1,6 @@
 import { TelegramUser } from "@/domain/telegram/telegram.types";
 import { DEFAULT_BOT_NAME, CREATOR_NAME, CREATOR_EMAIL, CREATOR_USERNAME } from "@/prompts/prompt.constants";
+import { buildTemporalPrompt } from "@/prompts/temporal.prompt";
 
 /**
  * Instructions embedded in the system prompt guiding the model on how to handle user identity.
@@ -65,4 +66,19 @@ export function buildUserContextPrompt(user?: TelegramUser, botName: string = DE
     `- Role: Authorized User`,
     `- Note: If this user asks about their identity or who they are, address them by their name (${fullName}) and username (${username}).`,
   ].join("\n");
+}
+
+/**
+ * Builds composite real-time dynamic context (user metadata + temporal situational awareness).
+ */
+export function buildDynamicContextPrompt(
+  user?: TelegramUser,
+  botName: string = DEFAULT_BOT_NAME,
+  timeZone: string = "Asia/Kolkata",
+  date: Date = new Date()
+): string {
+  return [
+    buildUserContextPrompt(user, botName),
+    buildTemporalPrompt(date, timeZone),
+  ].join("\n\n");
 }
