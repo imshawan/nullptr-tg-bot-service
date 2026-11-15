@@ -15,6 +15,9 @@ import {
   parseDownloadDirective,
   cleanDownloadDirective,
   detectDownloadIntent,
+  detectWhoAmIIntent,
+  formatWhoAmIResponse,
+  buildUserContextPrompt,
 } from "@/utils/text.utils";
 import { TelegramApiError } from "@/core/errors/app-error";
 import {
@@ -198,6 +201,7 @@ export class BotService {
       const handled = await this.commandRegistry.dispatch(text, {
         chatId,
         senderId,
+        sender: msg.from,
         telegram: this.telegram,
         llm: this.llm,
         sessionStore: this.sessionStore,
@@ -215,12 +219,21 @@ export class BotService {
       return;
     }
 
-    // 4. Regular Chat Flow -> LLM Inference
+    // 4. Instant User Identity Intent (e.g. "who am I", "what is my name?", "do you know who I am")
+    if (detectWhoAmIIntent(text)) {
+      const response = formatWhoAmIResponse(msg.from, BOT_NAME);
+      await this.sessionStore.appendMessage(chatId, { role: "user", content: text });
+      await this.sessionStore.appendMessage(chatId, { role: "assistant", content: response });
+      await this.deliverMessage(chatId, response);
+      return;
+    }
+
+    // 5. Regular Chat Flow -> LLM Inference
     await this.sessionStore.appendMessage(chatId, { role: "user", content: text });
     const history = await this.sessionStore.getHistory(chatId);
 
     try {
-      const reply = await this.streamLlmReply(chatId, history, text);
+      const reply = await this.streamLlmReply(chatId, history, text, msg.from);
       await this.sessionStore.appendMessage(chatId, { role: "assistant", content: reply });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -865,7 +878,12 @@ export class BotService {
   /**
    * Streams LLM response to Telegram with throttled editing, typing heartbeat, directive extraction, and rate-limit backoff.
    */
-  private async streamLlmReply(chatId: number, messages: ChatMessage[], userInput?: string): Promise<string> {
+  private async streamLlmReply(
+    chatId: number,
+    messages: ChatMessage[],
+    userInput?: string,
+    sender?: TelegramUser
+  ): Promise<string> {
     // Show typing status in chat header
     await this.telegram.sendChatAction(chatId, "typing");
 
@@ -897,8 +915,14 @@ export class BotService {
     let rateLimitedUntil = 0;
     const baseThrottleMs = Math.max(1500, this.config.streamEditIntervalMs);
 
+    const userContextPrompt = buildUserContextPrompt(sender, BOT_NAME);
+    const messagesWithContext: ChatMessage[] = [
+      { role: "system", content: userContextPrompt },
+      ...messages,
+    ];
+
     try {
-      for await (const chunk of this.llm.chatStream(messages, abortController.signal)) {
+      for await (const chunk of this.llm.chatStream(messagesWithContext, abortController.signal)) {
         isStreaming = true;
         fullContent += chunk.content;
 

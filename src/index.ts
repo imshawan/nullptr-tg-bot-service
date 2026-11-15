@@ -39,6 +39,7 @@ import { ModelsCommand } from "@/services/commands/models.command";
 import { ModelCommand } from "@/services/commands/model.command";
 import { ClearCommand } from "@/services/commands/clear.command";
 import { StatusCommand } from "@/services/commands/status.command";
+import { WhoAmICommand } from "@/services/commands/whoami.command";
 
 async function bootstrap(): Promise<void> {
   // 1. Core logger initialization via config getter
@@ -91,6 +92,7 @@ async function bootstrap(): Promise<void> {
   commandRegistry.register(new ModelCommand());
   commandRegistry.register(new ClearCommand());
   commandRegistry.register(new StatusCommand());
+  commandRegistry.register(new WhoAmICommand());
 
   // 5. Bot Service orchestrator
   const botService = new BotService(

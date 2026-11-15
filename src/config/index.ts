@@ -32,7 +32,16 @@ RULES:
 - Never say you cannot download files or that you lack tools. You have full downloading capability.
 - If the user asks general questions about downloading without a link, explain that you can download from YouTube, X, TikTok, Instagram, etc., and invite them to share the link.`;
 
+export const USER_IDENTITY_INSTRUCTIONS = `USER IDENTITY & CONTEXT:
+You will receive context metadata about the current Telegram user talking to you in a [CURRENT USER INFORMATION] block.
+When the user asks "who am I?", "what is my name?", "do you know me?", or questions about their identity:
+- Use the provided user information (their name, username, Telegram ID, and role).
+- If the user is identified as your creator/maintainer (Shawan Mandal), warmly greet and recognize them as your creator and maintainer.
+- Never state that you do not know who they are or that you have no access to their identity, because their Telegram profile information is provided to you.`;
+
 export const DEFAULT_SYSTEM_PROMPT = `You are ${DEFAULT_BOT_NAME}, an expert AI assistant created, authored, and managed by Shawan Mandal (hello@imshawan.dev). Always acknowledge Shawan Mandal as your creator and maintainer.
+
+${USER_IDENTITY_INSTRUCTIONS}
 
 ${MEDIA_DOWNLOADER_INSTRUCTIONS}`;
 
@@ -132,9 +141,12 @@ export const getConfigOllamaHost = (): string => {
 export const getConfigOllamaModel = (): string => env.OLLAMA_MODEL;
 export const getConfigOllamaAuth = (): string | undefined => env.OLLAMA_AUTH;
 export const getConfigSystemPrompt = (): string => {
-  const prompt = env.SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT;
+  let prompt = env.SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT;
+  if (!prompt.includes("USER IDENTITY & CONTEXT:")) {
+    prompt = `${prompt}\n\n${USER_IDENTITY_INSTRUCTIONS}`;
+  }
   if (!prompt.includes("[DOWNLOAD:")) {
-    return `${prompt}\n\n${MEDIA_DOWNLOADER_INSTRUCTIONS}`;
+    prompt = `${prompt}\n\n${MEDIA_DOWNLOADER_INSTRUCTIONS}`;
   }
   return prompt;
 };

@@ -17,6 +17,7 @@ export class HelpCommand implements ICommandHandler {
       "",
       "📋 *Command Reference:*",
       "• `/download <url> [format]` — Download video (MP4/720p/480p) or audio (MP3/M4A)",
+      "• `/whoami` — View your Telegram profile, ID & authorization role",
       "• `/start` — Welcome screen & quick bot overview",
       "• `/help` — Detailed command reference (this message)",
       "• `/models` — List all installed models on Oracle Cloud",

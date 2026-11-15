@@ -1,4 +1,5 @@
 import { ITelegramClient } from "@/domain/telegram/telegram-client.interface";
+import { TelegramUser } from "@/domain/telegram/telegram.types";
 import { ILlmProvider } from "@/domain/llm/llm-provider.interface";
 import { ISessionStore } from "@/domain/session/session-store.interface";
 import { IDownloaderService } from "@/domain/downloader/downloader.interface";
@@ -8,6 +9,7 @@ import { ILogger } from "@/core/logger/logger.interface";
 export interface CommandContext {
   chatId: number;
   senderId?: number;
+  sender?: TelegramUser;
   rawText: string;
   args: string[];
   telegram: ITelegramClient;

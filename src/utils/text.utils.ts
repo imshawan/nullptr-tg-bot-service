@@ -1,3 +1,6 @@
+import { BOT_NAME } from "@/config";
+import { TelegramUser } from "@/domain/telegram/telegram.types";
+
 /**
  * Splits text into chunks that do not exceed maxLength,
  * attempting to preserve newline and paragraph boundaries.
@@ -195,4 +198,124 @@ export function detectDownloadIntent(text: string): { hasIntent: boolean; format
 
   return { hasIntent: true, format };
 }
+
+/**
+ * Detects whether a user message is asking about their own identity (e.g. "who am I", "what's my name", "do you know who I am").
+ */
+export function detectWhoAmIIntent(text: string): boolean {
+  if (!text) return false;
+  const clean = text.trim().toLowerCase().replace(/[?!.,;:]+$/, "");
+  return (
+    /^(?:who\s+am\s+i(?:\s+to\s+you)?|whoami|who\s+i\s+am|who's\s+speaking|who\s+is\s+speaking|who's\s+talking|who\s+is\s+talking|my\s+identity)$/i.test(clean) ||
+    /^(?:what(?:'s|\s+is)\s+my\s+name|what(?:'s|\s+is)\s+my\s+(?:telegram\s+)?id|do\s+you\s+know\s+(?:who\s+i\s+am|me|my\s+name)|tell\s+me\s+(?:who\s+i\s+am|my\s+name))$/i.test(clean)
+  );
+}
+
+/**
+ * Checks whether a Telegram user is the creator and maintainer (Shawan Mandal).
+ */
+export function isCreator(user?: TelegramUser): boolean {
+  if (!user) return false;
+  const username = user.username?.toLowerCase().replace(/^@/, "");
+  if (username === "imshawan") return true;
+
+  const fullName = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
+  if (fullName.includes("shawan")) return true;
+
+  return false;
+}
+
+/**
+ * Formats a Telegram user's display name.
+ */
+export function formatUserFullName(user?: TelegramUser): string {
+  if (!user) return "Unknown User";
+  const parts = [user.first_name, user.last_name].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : user.username ? `@${user.username}` : `User ${user.id}`;
+}
+
+/**
+ * Builds a formatted markdown identity response for the current Telegram user.
+ */
+export function formatWhoAmIResponse(user?: TelegramUser, botName: string = BOT_NAME): string {
+  if (!user) {
+    return [
+      `👤 *User Identity*`,
+      "",
+      `I could not retrieve your Telegram profile metadata from this message.`,
+    ].join("\n");
+  }
+
+  const creator = isCreator(user);
+  const fullName = formatUserFullName(user);
+  const usernameText = user.username ? `@${user.username}` : "_Not set_";
+  const langText = user.language_code ? `\`${user.language_code}\`` : "_Not specified_";
+
+  if (creator) {
+    return [
+      `👑 *Creator & Maintainer*`,
+      "",
+      `Hello, *${fullName}*! You are the creator, author, and maintainer of *${botName}*.`,
+      "",
+      "📋 *Your Profile:*",
+      `• *Name:* ${fullName}`,
+      `• *Username:* ${usernameText}`,
+      `• *Telegram ID:* \`${user.id}\``,
+      `• *Role:* Creator & Administrator`,
+      `• *Language:* ${langText}`,
+      `• *Contact:* [hello@imshawan.dev](mailto:hello@imshawan.dev) · [imshawan.dev](https://www.imshawan.dev)`,
+      "",
+      `All systems are operational and ready at your service!`,
+    ].join("\n");
+  }
+
+  return [
+    `👤 *User Identity*`,
+    "",
+    `Hello, *${fullName}*! You are recognized as an authorized user of *${botName}*.`,
+    "",
+    "📋 *Your Profile:*",
+    `• *Name:* ${fullName}`,
+    `• *Username:* ${usernameText}`,
+    `• *Telegram ID:* \`${user.id}\``,
+    `• *Role:* Authorized User`,
+    `• *Language:* ${langText}`,
+    "",
+    `How can I assist you today? Type \`/help\` to view available commands.`,
+  ].join("\n");
+}
+
+/**
+ * Builds user context metadata to inject into LLM system messages so the model is aware of who it is talking to.
+ */
+export function buildUserContextPrompt(user?: TelegramUser, botName: string = BOT_NAME): string {
+  if (!user) {
+    return `[CURRENT USER INFORMATION]\n- User: Unknown / Anonymous`;
+  }
+
+  const creator = isCreator(user);
+  const fullName = formatUserFullName(user);
+  const username = user.username ? `@${user.username}` : "none";
+
+  if (creator) {
+    return [
+      `[CURRENT USER INFORMATION]`,
+      `- Name: ${fullName}`,
+      `- Username: ${username}`,
+      `- Telegram ID: ${user.id}`,
+      `- Role: Creator, Author & Maintainer of ${botName} (Shawan Mandal)`,
+      `- Note: This user created and manages you. If they ask about their identity, who they are, or their relationship to you, address them respectfully as your creator/maintainer (Shawan Mandal).`,
+    ].join("\n");
+  }
+
+  return [
+    `[CURRENT USER INFORMATION]`,
+    `- Name: ${fullName}`,
+    `- Username: ${username}`,
+    `- Telegram ID: ${user.id}`,
+    `- Role: Authorized User`,
+    `- Note: If this user asks about their identity or who they are, address them by their name (${fullName}) and username (${username}).`,
+  ].join("\n");
+}
+
 

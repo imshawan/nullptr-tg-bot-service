@@ -17,6 +17,7 @@ export class StartCommand implements ICommandHandler {
       "",
       "📋 *Available Commands:*",
       "/download <url> - Download video or MP3 audio from any link",
+      "/whoami - View your Telegram profile & role",
       "/models - List all installed Ollama models",
       "/model <name> - Switch active model",
       "/clear - Clear conversation memory",
