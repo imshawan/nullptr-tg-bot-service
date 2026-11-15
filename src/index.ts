@@ -14,6 +14,7 @@ import {
   getConfigOllamaModel,
   getConfigOllamaAuth,
   getConfigOllamaNumCtx,
+  getConfigOllamaTemperature,
   getConfigSystemPrompt,
   getConfigMaxHistoryMessages,
   getConfigYtDlpPath,
@@ -63,6 +64,7 @@ async function bootstrap(): Promise<void> {
     authHeader: getConfigOllamaAuth(),
     systemPrompt: getConfigSystemPrompt(),
     numCtx: getConfigOllamaNumCtx(),
+    temperature: getConfigOllamaTemperature(),
     logger,
   });
 

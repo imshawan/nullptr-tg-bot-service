@@ -36,6 +36,7 @@ export class OllamaProvider implements ILlmProvider {
   private readonly authHeader?: string;
   private readonly systemPrompt?: string;
   private readonly numCtx?: number;
+  private readonly temperature?: number;
   private readonly logger: ILogger;
 
   constructor(options: {
@@ -44,6 +45,7 @@ export class OllamaProvider implements ILlmProvider {
     authHeader?: string;
     systemPrompt?: string;
     numCtx?: number;
+    temperature?: number;
     logger: ILogger;
   }) {
     this.host = options.host.replace(/\/+$/, "");
@@ -51,6 +53,7 @@ export class OllamaProvider implements ILlmProvider {
     this.authHeader = options.authHeader;
     this.systemPrompt = options.systemPrompt;
     this.numCtx = options.numCtx;
+    this.temperature = options.temperature;
     this.logger = options.logger.child("OllamaProvider");
 
     if (typeof this.numCtx === "number" && this.numCtx > 0) {
@@ -115,11 +118,32 @@ export class OllamaProvider implements ILlmProvider {
   ): AsyncIterable<StreamChunk> {
     const url = `${this.host}/api/chat`;
 
-    const payloadMessages: ChatMessage[] = [];
+    // Consolidate all system instructions into a single unified system prompt
+    // to prevent chat template overwrites in models like Qwen/Llama
+    const systemParts: string[] = [];
     if (this.systemPrompt) {
-      payloadMessages.push({ role: "system", content: this.systemPrompt });
+      systemParts.push(this.systemPrompt);
     }
-    payloadMessages.push(...messages);
+
+    const nonSystemMessages: ChatMessage[] = [];
+    for (const msg of messages) {
+      if (msg.role === "system") {
+        if (msg.content?.trim()) {
+          systemParts.push(msg.content.trim());
+        }
+      } else {
+        nonSystemMessages.push(msg);
+      }
+    }
+
+    const payloadMessages: ChatMessage[] = [];
+    if (systemParts.length > 0) {
+      payloadMessages.push({
+        role: "system",
+        content: systemParts.join("\n\n"),
+      });
+    }
+    payloadMessages.push(...nonSystemMessages);
 
     const requestBody: Record<string, unknown> = {
       model: this.activeModel,
@@ -127,10 +151,15 @@ export class OllamaProvider implements ILlmProvider {
       stream: true,
     };
 
+    const options: Record<string, unknown> = {};
     if (typeof this.numCtx === "number" && this.numCtx > 0) {
-      requestBody.options = {
-        num_ctx: this.numCtx,
-      };
+      options.num_ctx = this.numCtx;
+    }
+    if (typeof this.temperature === "number" && this.temperature >= 0) {
+      options.temperature = this.temperature;
+    }
+    if (Object.keys(options).length > 0) {
+      requestBody.options = options;
     }
 
     let res: Response;

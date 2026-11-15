@@ -42,6 +42,7 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().default("qwen2.5-coder:latest"),
   OLLAMA_AUTH: z.string().optional(),
   OLLAMA_NUM_CTX: z.string().default("2048").transform((val) => parseInt(val, 10)),
+  OLLAMA_TEMPERATURE: z.string().default("0.65").transform((val) => parseFloat(val)),
   ALLOW_MATURE_CONTENT: z
     .string()
     .default("true")
@@ -122,6 +123,7 @@ export const getConfigOllamaHost = (): string => {
 export const getConfigOllamaModel = (): string => env.OLLAMA_MODEL;
 export const getConfigOllamaAuth = (): string | undefined => env.OLLAMA_AUTH;
 export const getConfigOllamaNumCtx = (): number => env.OLLAMA_NUM_CTX;
+export const getConfigOllamaTemperature = (): number => env.OLLAMA_TEMPERATURE;
 export const getConfigAllowMatureContent = (): boolean => env.ALLOW_MATURE_CONTENT;
 export const getConfigSystemPrompt = (): string =>
   buildFullSystemPrompt(env.SYSTEM_PROMPT, env.BOT_NAME, env.ALLOW_MATURE_CONTENT);
