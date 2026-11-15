@@ -65,7 +65,19 @@ This document contains critical architectural rules, conventions, and constraint
 2. **`src/prompts/` (Prompt Engineering & LLM Directives)**:
    - Holds system persona definitions, yt-dlp media downloader directives, user identity context templates, and prompt composition helpers (`buildDefaultSystemPrompt`, `buildFullSystemPrompt`, `buildUserContextPrompt`).
 3. **`src/core/` (Cross-Cutting Infrastructure)**:
-   - Contains custom typed errors (`AppError`, `TelegramApiError`, `LlmProviderError`), structured logging (`ConsoleLogger`), and common types.
+   - Contains custom typed errors (`AppError`, `TelegramApiError`, `LlmProviderError`), structured logging (`ConsoleLogger`), per-chat FIFO task queuing (`KeyedAsyncQueue`), and common types.
+   - **Per-Chat Concurrency Invariant**: All incoming Telegram updates are routed through `KeyedAsyncQueue` partitioned by `chatId`. Tasks from different chats run concurrently, while tasks for the same chat execute strictly in FIFO order to prevent race conditions on session memory and message delivery.
+
+```mermaid
+flowchart TD
+    Poll["Telegram getUpdates Loop"] -->|"Non-blocking dispatch"| Router["Queue Router (chatId)"]
+    Router -->|"chatId = User A"| QueueA["User A FIFO Queue"]
+    Router -->|"chatId = User B"| QueueB["User B FIFO Queue"]
+    Router -->|"chatId = User N"| QueueN["User N FIFO Queue"]
+    QueueA -->|"Worker A"| ExecA["Ollama Stream / Download"]
+    QueueB -->|"Worker B"| ExecB["Instant Command / LLM Stream"]
+    QueueN -->|"Worker N"| ExecN["Independent Chat Flow"]
+```
 4. **`src/domain/` (Business Entities & Abstractions)**:
    - `domain/downloader/`: `IDownloaderService` interface, types, and `YtDlpDownloader`.
    - `domain/llm/`: `ILlmProvider` interface and concrete implementations (`OllamaProvider`).

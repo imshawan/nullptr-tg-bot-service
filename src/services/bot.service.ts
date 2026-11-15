@@ -20,6 +20,7 @@ import {
 } from "@/utils/text.utils";
 import { buildUserContextPrompt } from "@/prompts";
 import { TelegramApiError } from "@/core/errors/app-error";
+import { KeyedAsyncQueue } from "@/core/queue/keyed-async-queue";
 import {
   createDownloadSession,
   buildMainMenu,
@@ -37,6 +38,7 @@ export class BotService {
   private updateOffset = 0;
   private isRunning = false;
   private readonly logger: ILogger;
+  private readonly updateQueue: KeyedAsyncQueue<number>;
 
   constructor(
     private readonly config: BotServiceConfig,
@@ -49,6 +51,9 @@ export class BotService {
     logger: ILogger
   ) {
     this.logger = logger.child("BotService");
+    this.updateQueue = new KeyedAsyncQueue<number>({
+      logger: this.logger.child("UpdateQueue"),
+    });
   }
 
   /**
@@ -85,6 +90,26 @@ export class BotService {
   }
 
   /**
+   * Resolves a numeric partition key (chatId) for an incoming Telegram update to serialize
+   * updates from the same chat in FIFO order while allowing different chats to process concurrently.
+   */
+  private getUpdateRoutingKey(update: TelegramUpdate): number {
+    if (update.message?.chat?.id !== undefined) {
+      return update.message.chat.id;
+    }
+    if (update.callback_query?.message?.chat?.id !== undefined) {
+      return update.callback_query.message.chat.id;
+    }
+    if (update.callback_query?.from?.id !== undefined) {
+      return update.callback_query.from.id;
+    }
+    if (update.edited_message?.chat?.id !== undefined) {
+      return update.edited_message.chat.id;
+    }
+    return 0; // Fallback partition for unknown update types
+  }
+
+  /**
    * Begins Telegram update polling loop
    */
   public async start(): Promise<void> {
@@ -96,7 +121,12 @@ export class BotService {
         const updates = await this.telegram.getUpdates(this.updateOffset, 25);
         for (const update of updates) {
           this.updateOffset = update.update_id + 1;
-          await this.processUpdate(update);
+          const routingKey = this.getUpdateRoutingKey(update);
+
+          // Dispatch each update into its per-chat FIFO queue without blocking the polling loop
+          this.updateQueue.enqueue(routingKey, async () => {
+            await this.processUpdate(update);
+          });
         }
       } catch (err: unknown) {
         if (!this.isRunning) break;
@@ -128,11 +158,12 @@ export class BotService {
   }
 
   /**
-   * Stops the polling loop gracefully
+   * Stops the polling loop gracefully and awaits pending in-flight updates
    */
-  public stop(): void {
+  public async stop(): Promise<void> {
     this.logger.info(`Shutting down ${BOT_NAME} service...`);
     this.isRunning = false;
+    await this.updateQueue.waitForIdle(5000);
   }
 
   /**
