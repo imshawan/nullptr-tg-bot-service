@@ -112,7 +112,7 @@ async function bootstrap(): Promise<void> {
   // 6. Graceful shutdown handler
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}. Gracefully stopping ${BOT_NAME}...`);
-    botService.stop();
+    await botService.stop();
     await fileServer.stop();
     // Allow pending requests to complete cleanly
     setTimeout(() => {

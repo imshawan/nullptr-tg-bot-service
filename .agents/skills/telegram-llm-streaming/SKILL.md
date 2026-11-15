@@ -26,6 +26,7 @@ If you or another LLM need to locate or trace a feature from the original `bot.m
 | `chatHistory` Map | `InMemorySessionStore` (`ISessionStore`) | `src/domain/session/in-memory-session.store.ts` |
 | `processUpdate()` | `BotService.processUpdate()` | `src/services/bot.service.ts` |
 | `pollLoop()` | `BotService.start()` | `src/services/bot.service.ts` |
+| Per-chat update queue | `KeyedAsyncQueue` | `src/core/queue/keyed-async-queue.ts` |
 | System prompt & personas | Modular prompt engineering subsystem | `src/prompts/` (`@/prompts`) |
 | Top-level environment vars | Centralized `getConfig*()` functions | `src/config/index.ts` |
 
@@ -37,7 +38,11 @@ When an update arrives from Telegram via `getUpdates`:
 
 ```mermaid
 flowchart TD
-    Update[Telegram Update Received] --> Auth{Authorized User?}
+    Update[Telegram Update Received] --> Route[Resolve Partition Key: chatId]
+    Route --> Enqueue[KeyedAsyncQueue.enqueue]
+    Enqueue -->|Different Chats: Parallel| Process[processUpdate]
+    Enqueue -->|Same Chat: Strict FIFO| Process
+    Process --> Auth{Authorized User?}
     Auth -- No --> Deny[Send 403 Access Denied Message]
     Auth -- Yes --> IsCommand{Starts with '/'?}
     IsCommand -- Yes --> Dispatch[CommandRegistry.dispatch]
@@ -47,7 +52,7 @@ flowchart TD
     Stream --> Heartbeat[Send 'typing' Action Heartbeat every 4.5s]
     Stream --> Placeholder[Send 'NullPointer is thinking...' Placeholder]
     Stream --> Consume[Consume OllamaProvider.chatStream Async Generator]
-    Consume --> Throttle{Elapsed >= 1200ms?}
+    Consume --> Throttle{Elapsed >= ThrottleMs?}
     Throttle -- Yes --> Edit[editMessageText with Cursor ▍]
     Throttle -- No --> Buffer[Accumulate in Buffer]
     Consume -- Done --> FinalDelivery[deliverMessage: Markdown with Plain-Text Fallback]
@@ -58,17 +63,34 @@ flowchart TD
 
 ## ⚙️ Critical Invariants of the Streaming Engine
 
-### 1. The 1200ms Edit Throttle
+### 1. Per-Chat Asynchronous Serialization (`KeyedAsyncQueue`)
+- To prevent one user's slow LLM stream or long media download from blocking other users, updates are routed through `KeyedAsyncQueue` partitioned by `chatId`.
+- **Different chats** execute concurrently in parallel without waiting.
+- **The same chat** executes strictly in FIFO sequence: subsequent messages or commands from that chat wait until previous messages finish, preventing race conditions in `sessionStore` and out-of-order Telegram replies.
+- When a chat's queue becomes idle, its queue entry is automatically purged from memory.
+
+```mermaid
+flowchart TD
+    Poll["Telegram getUpdates Loop"] -->|"Non-blocking dispatch"| Router["Queue Router (chatId)"]
+    Router -->|"chatId = User A"| QueueA["User A FIFO Queue"]
+    Router -->|"chatId = User B"| QueueB["User B FIFO Queue"]
+    Router -->|"chatId = User N"| QueueN["User N FIFO Queue"]
+    QueueA -->|"Worker A"| ExecA["Ollama Stream / Download"]
+    QueueB -->|"Worker B"| ExecB["Instant Command / LLM Stream"]
+    QueueN -->|"Worker N"| ExecN["Independent Chat Flow"]
+```
+
+### 2. The Dynamic Edit Throttle (Rate-Limit Backoff)
 - Telegram enforces aggressive rate limits on message editing in private and group chats.
 - Never decrease `STREAM_EDIT_INTERVAL_MS` below `1000ms`. The default is `1200ms`.
 - If Telegram returns HTTP 429 (`TOO_MANY_REQUESTS`), `BotService` dynamically reads the `retry_after` parameter and delays the next edit accordingly.
 
-### 2. Typing Indicator Heartbeat
+### 3. Typing Indicator Heartbeat
 - Telegram automatically dismisses the `"typing..."` chat header after 5 seconds.
 - While the remote LLM on Oracle Cloud processes the prompt before returning its first token, `BotService` maintains an active heartbeat timer (`setInterval` every 4500ms) to ensure the user knowsNullPointeris working.
 - As soon as the first stream chunk arrives, the heartbeat interval is immediately cleared.
 
-### 3. Cursor Effect
+### 4. Cursor Effect
 - While streaming, edits append an animated terminal cursor `▍`:
   ```typescript
   const previewText = `${fullContent} ▍`;

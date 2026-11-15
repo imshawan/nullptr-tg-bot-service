@@ -30,8 +30,20 @@ This skill guides agents and LLMs on maintaining the architectural integrity of 
 
 3. **`src/core/`**:
    - `logger/`: `ILogger` interface and `ConsoleLogger`.
+   - `queue/`: `KeyedAsyncQueue` (per-chat FIFO asynchronous execution & cross-chat concurrency).
    - `errors/`: `AppError`, `TelegramApiError`, `LlmProviderError`, `UnauthorizedError`.
    - `types/`: Universal interfaces (`IDisposable`, `LogLevel`).
+
+```mermaid
+flowchart TD
+    Poll["Telegram getUpdates Loop"] -->|"Non-blocking dispatch"| Router["Queue Router (chatId)"]
+    Router -->|"chatId = User A"| QueueA["User A FIFO Queue"]
+    Router -->|"chatId = User B"| QueueB["User B FIFO Queue"]
+    Router -->|"chatId = User N"| QueueN["User N FIFO Queue"]
+    QueueA -->|"Worker A"| ExecA["Ollama Stream / Download"]
+    QueueB -->|"Worker B"| ExecB["Instant Command / LLM Stream"]
+    QueueN -->|"Worker N"| ExecN["Independent Chat Flow"]
+```
 
 4. **`src/domain/`**:
    - `downloader/`: `IDownloaderService` interface, types, and `YtDlpDownloader` (resolves platform binaries, metadata, tubesnag cascades).

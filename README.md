@@ -18,6 +18,8 @@ src/
 │   ├── logger/
 │   │   ├── logger.interface.ts             # ILogger interface
 │   │   └── console-logger.ts               # Structured logger with levels & timestamps
+│   ├── queue/
+│   │   └── keyed-async-queue.ts            # Per-chat FIFO serialization & cross-chat concurrency
 │   └── types/
 │       └── common.types.ts                 # Shared system types & lifecycle interfaces
 ├── prompts/                                # Prompt Engineering & System Directives
@@ -89,6 +91,22 @@ src/
   - Continuous "typing..." heartbeat while the model processes complex prompts.
   - Rich Markdown rendering with automatic plain-text fallback on parse errors.
   - Context memory window with automatic reset on model switch.
+- **Per-Chat Concurrency & Non-Blocking Queue (`KeyedAsyncQueue`)**:
+  - **Cross-Chat Independence**: One user's long LLM streaming inference or large media download will never block another user's prompt or instant commands (`/status`, `/whoami`, `/help`).
+  - **Strict FIFO Serialization**: Guarantees that messages from the same user or chat thread are processed sequentially in exact order, preventing race conditions in conversation memory and out-of-order Telegram replies.
+  - **Memory Clean**: Inactive queue entries are automatically reclaimed from memory when a chat's tasks complete.
+
+```mermaid
+flowchart TD
+    Poll["Telegram getUpdates Loop"] -->|"Non-blocking dispatch"| Router["Queue Router (chatId)"]
+    Router -->|"chatId = User A"| QueueA["User A FIFO Queue"]
+    Router -->|"chatId = User B"| QueueB["User B FIFO Queue"]
+    Router -->|"chatId = User N"| QueueN["User N FIFO Queue"]
+    QueueA -->|"Worker A"| ExecA["Ollama Stream / Download"]
+    QueueB -->|"Worker B"| ExecB["Instant Command / LLM Stream"]
+    QueueN -->|"Worker N"| ExecN["Independent Chat Flow"]
+```
+
 - **Slash Command Autocomplete**:
   - Automatically configures Telegram's `/` autocomplete popup and native Menu button via `setMyCommands`.
 - **Security & Centralized Config**:
