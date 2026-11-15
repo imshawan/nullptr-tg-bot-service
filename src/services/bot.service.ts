@@ -224,6 +224,17 @@ export class BotService {
       await this.sessionStore.appendMessage(chatId, { role: "assistant", content: reply });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      if (err instanceof TelegramApiError) {
+        this.logger.error(`[${BOT_NAME}] Telegram error during chat processing: ${errMsg}`, err);
+        await this.telegram
+          .sendMessage({
+            chat_id: chatId,
+            text: `⚠️ [${BOT_NAME}] Telegram delivery error: ${errMsg}`,
+          })
+          .catch(() => {});
+        return;
+      }
+
       this.logger.error(`[${BOT_NAME}] Error during LLM chat processing: ${errMsg}`, err);
       await this.telegram.sendMessage({
         chat_id: chatId,
@@ -814,14 +825,26 @@ export class BotService {
           parse_mode: "Markdown",
         });
         return;
-      } catch {
-        // Fallback to unformatted plain text if Telegram fails entity parsing
-        await this.telegram.editMessageText({
-          chat_id: chatId,
-          message_id: existingMessageId,
-          text,
-        });
-        return;
+      } catch (err: unknown) {
+        if (err instanceof TelegramApiError && err.errorCode === 429) {
+          this.logger.warn(
+            `[${BOT_NAME}] Live edit throttled by Telegram (429 retry after ${err.retryAfter ?? 0}s). Delivering response via new message.`
+          );
+        } else {
+          try {
+            // Fallback to unformatted plain text if Telegram fails entity parsing
+            await this.telegram.editMessageText({
+              chat_id: chatId,
+              message_id: existingMessageId,
+              text,
+            });
+            return;
+          } catch (editErr: unknown) {
+            this.logger.warn(
+              `[${BOT_NAME}] Edit fallback failed, delivering via new message: ${editErr instanceof Error ? editErr.message : String(editErr)}`
+            );
+          }
+        }
       }
     }
 
@@ -869,7 +892,10 @@ export class BotService {
     let fullContent = "";
     let lastEditTime = Date.now();
     let lastEditedText = "";
-    const throttleMs = this.config.streamEditIntervalMs;
+    let lastEditedLength = 0;
+    let editCount = 0;
+    let rateLimitedUntil = 0;
+    const baseThrottleMs = Math.max(1500, this.config.streamEditIntervalMs);
 
     try {
       for await (const chunk of this.llm.chatStream(messages, abortController.signal)) {
@@ -877,11 +903,22 @@ export class BotService {
         fullContent += chunk.content;
 
         const now = Date.now();
+        // Dynamically back off edit frequency to respect Telegram's ~20-30 edits/minute limit
+        const currentThrottleMs =
+          editCount > 15
+            ? Math.max(baseThrottleMs, 3000)
+            : editCount > 6
+            ? Math.max(baseThrottleMs, 2500)
+            : baseThrottleMs;
+        const charDelta = fullContent.length - lastEditedLength;
+
         if (
           placeholderMsgId &&
+          now >= rateLimitedUntil &&
           fullContent.trim().length > 0 &&
           fullContent.length <= 3900 &&
-          now - lastEditTime >= throttleMs
+          charDelta >= 25 &&
+          now - lastEditTime >= currentThrottleMs
         ) {
           const cleanText = cleanDownloadDirective(fullContent);
           const previewText = cleanText ? `${cleanText} ▍` : `${BOT_NAME} is processing your request... ▍`;
@@ -893,10 +930,16 @@ export class BotService {
                 text: previewText,
               });
               lastEditedText = previewText;
+              lastEditedLength = fullContent.length;
               lastEditTime = now;
+              editCount++;
             } catch (err: unknown) {
               if (err instanceof TelegramApiError && err.errorCode === 429 && err.retryAfter) {
-                lastEditTime = now + err.retryAfter * 1000;
+                rateLimitedUntil = now + (err.retryAfter + 1) * 1000;
+                lastEditTime = rateLimitedUntil;
+                this.logger.warn(
+                  `[${BOT_NAME}] Live stream edits rate-limited (429). Pausing live updates for ${err.retryAfter}s.`
+                );
               }
             }
           }
@@ -934,12 +977,16 @@ export class BotService {
       }
 
       // Deliver final output (with rich markdown + fallback)
-      if (placeholderMsgId && cleanedReply.length <= 4000) {
-        await this.deliverMessage(chatId, cleanedReply, placeholderMsgId);
+      const now = Date.now();
+      // If currently rate-limited on edits, deliver via new message to avoid waiting out the 429 cooldown
+      const targetPlaceholderId = now >= rateLimitedUntil ? placeholderMsgId : undefined;
+
+      if (targetPlaceholderId && cleanedReply.length <= 4000) {
+        await this.deliverMessage(chatId, cleanedReply, targetPlaceholderId);
       } else {
         const chunks = splitMessageText(cleanedReply, 4000);
-        if (placeholderMsgId) {
-          await this.deliverMessage(chatId, chunks[0], placeholderMsgId);
+        if (targetPlaceholderId) {
+          await this.deliverMessage(chatId, chunks[0], targetPlaceholderId);
           for (let i = 1; i < chunks.length; i++) {
             await this.deliverMessage(chatId, chunks[i]);
           }

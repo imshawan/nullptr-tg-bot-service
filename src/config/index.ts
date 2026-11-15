@@ -50,7 +50,7 @@ const envSchema = z.object({
     .min(1, "TELEGRAM_TOKEN cannot be empty"),
   ALLOWED_USER_ID: z.string().optional(),
   ALLOWED_USER_IDS: z.string().optional(),
-  STREAM_EDIT_INTERVAL_MS: z.string().default("1200").transform((val) => parseInt(val, 10)),
+  STREAM_EDIT_INTERVAL_MS: z.string().default("2000").transform((val) => parseInt(val, 10)),
 
   // LLM / Ollama configuration
   OLLAMA_HOST: z.string().default("http://127.0.0.1:11434"),
