@@ -19,10 +19,10 @@ const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
   best: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
-  "8k": "bestvideo[height<=?4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best",
-  "4k": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
-  "2160p": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
-  "1440p": "bestvideo[height<=?1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best",
+  "8k": "bestvideo[height<=?4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best[height<=?4320]/best[width<=?4320]/best",
+  "4k": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
+  "2160p": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
+  "1440p": "bestvideo[height<=?1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best[height<=?1440]/best[width<=?1440]/best",
   "1080p": "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best[height<=?1080]/best[width<=?1080]/best",
   "720p": "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best[height<=?720]/best[width<=?720]/best",
   "480p": "bestvideo[height<=?480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best[height<=?480]/best[width<=?480]/best",
@@ -518,6 +518,12 @@ export class YtDlpDownloader implements IDownloaderService {
       }
       args.push("-f", formatStr);
 
+      if (options.format === "mp4") {
+        // Prioritize universally compatible H.264 (AVC) and AAC (M4A) codecs
+        // Prevents selecting AV01 or VP9 codecs that fail in QuickTime, Safari, and Telegram
+        args.push("-S", "vcodec:avc,res,acodec:m4a");
+      }
+
       // Force output container and ensure proper merging of separate video+audio streams
       args.push("--merge-output-format", options.format);
 
@@ -526,7 +532,12 @@ export class YtDlpDownloader implements IDownloaderService {
 
       // Faststart: shift moov atom to beginning of file for instant web streaming and playback
       if (ffmpegBinary && options.format === "mp4") {
-        args.push("--postprocessor-args", "FFmpeg:-movflags +faststart");
+        args.push(
+          "--postprocessor-args",
+          "Merger:-movflags +faststart",
+          "--postprocessor-args",
+          "VideoRemuxer:-movflags +faststart"
+        );
       }
     }
 
@@ -567,7 +578,16 @@ export class YtDlpDownloader implements IDownloaderService {
             return reject(new AppError("Downloaded file could not be found in output directory."));
           }
 
-          const filePath = path.join(this.tempDir, matchedFile);
+          let filePath = path.join(this.tempDir, matchedFile);
+
+          // If MP4 video and FFmpeg is available, sanitize container:
+          // 1. Probes video stream codec (transcodes AV1/VP9 to H.264 if source had no AVC)
+          // 2. Flattens fragmented MP4s (fMP4/moof boxes from Instagram/DASH) into standard MP4
+          // 3. Guarantees faststart (+faststart) moov atom at byte 0 for instant seeking & playback
+          if (!isAudio && options.format === "mp4" && ffmpegBinary) {
+            filePath = await this.ensureMp4Playable(filePath, ffmpegBinary);
+          }
+
           const stats = await fsPromises.stat(filePath);
 
           // Strip the unique prefix for user-facing title
@@ -592,5 +612,99 @@ export class YtDlpDownloader implements IDownloaderService {
         reject(new AppError(`Failed to run download process: ${err.message}`));
       });
     });
+  }
+
+  /**
+   * Sanitizes and verifies that an MP4 video file is universally playable across
+   * Apple QuickTime, Safari, iOS WebKit, Chrome HTML5 video, and Telegram:
+   * 1. Inspects stream codecs using FFmpeg probe.
+   * 2. If the video codec is incompatible with native MP4 players (e.g. AV1, VP9),
+   *    transcodes video to H.264 (libx264) with AAC audio.
+   * 3. If already H.264/compatible, performs an instant stream copy (-c copy)
+   *    with -movflags +faststart to flatten any fragmented MP4 (fMP4/moof) boxes
+   *    and place the moov atom at byte 0 for instant playback.
+   */
+  private async ensureMp4Playable(filePath: string, ffmpegBinary: string): Promise<string> {
+    const fixedPath = `${filePath}.fixed.mp4`;
+
+    try {
+      // Step 1: Probe streams using FFmpeg
+      const probeOutput = await new Promise<string>((resolve) => {
+        const proc = spawn(ffmpegBinary, ["-i", filePath]);
+        let stderr = "";
+        proc.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
+        proc.on("close", () => resolve(stderr));
+        proc.on("error", () => resolve(""));
+      });
+
+      const isAv1 = /Video:\s*(av01|av1)/i.test(probeOutput);
+      const isVp9 = /Video:\s*(vp09|vp9)/i.test(probeOutput);
+      const needsTranscode = isAv1 || isVp9;
+
+      let ffmpegArgs: string[];
+
+      if (needsTranscode) {
+        this.logger.info(
+          `Detected non-native codec in MP4 (${isAv1 ? "AV1" : "VP9"}). Transcoding to H.264 for playback compatibility: ${filePath}`
+        );
+        ffmpegArgs = [
+          "-y",
+          "-i",
+          filePath,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "22",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "192k",
+          "-movflags",
+          "+faststart",
+          fixedPath,
+        ];
+      } else {
+        // Fast remux: stream copy takes < 0.2s, flattens fragmented MP4 and shifts moov atom
+        ffmpegArgs = [
+          "-y",
+          "-i",
+          filePath,
+          "-c",
+          "copy",
+          "-movflags",
+          "+faststart",
+          fixedPath,
+        ];
+      }
+
+      const success = await new Promise<boolean>((resolve) => {
+        const proc = spawn(ffmpegBinary, ffmpegArgs);
+        proc.on("close", (code) => resolve(code === 0));
+        proc.on("error", (err) => {
+          this.logger.warn(`FFmpeg sanitization error: ${err.message}`);
+          resolve(false);
+        });
+      });
+
+      if (success && fs.existsSync(fixedPath)) {
+        const fixedStats = await fsPromises.stat(fixedPath);
+        if (fixedStats.size > 1024) {
+          await fsPromises.unlink(filePath);
+          await fsPromises.rename(fixedPath, filePath);
+          this.logger.debug(`Successfully verified and flattened MP4: ${filePath}`);
+          return filePath;
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Failed to post-process MP4 container, keeping original file: ${String(err)}`);
+    } finally {
+      await fsPromises.unlink(fixedPath).catch(() => {});
+    }
+
+    return filePath;
   }
 }
