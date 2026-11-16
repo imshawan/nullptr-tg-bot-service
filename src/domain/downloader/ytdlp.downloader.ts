@@ -18,19 +18,19 @@ import { AppError } from "@/core/errors/app-error";
 const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
-  best: "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440][ext=mp4]+bestaudio/best[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
-  "8k": "bestvideo[height<=4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160][ext=mp4]+bestaudio/best[ext=mp4]",
-  "4k": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440][ext=mp4]+bestaudio/bestvideo[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
-  "2160p": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1440][ext=mp4]+bestaudio/bestvideo[height<=1080][ext=mp4]+bestaudio/best[ext=mp4]",
-  "1440p": "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio/bestvideo[height<=720][ext=mp4]+bestaudio/best[ext=mp4]",
-  "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio/bestvideo[height<=480][ext=mp4]+bestaudio/best[ext=mp4]",
-  "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480][ext=mp4]+bestaudio/best[ext=mp4]",
-  "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360][ext=mp4]+bestaudio/best[ext=mp4]",
-  "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
-  "240p": "bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=144][ext=mp4]+bestaudio/best[ext=mp4]",
-  "144p": "bestvideo[height<=144][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
-  audio: "bestaudio",
-  unknown: "best[ext=mp4]/best",
+  best: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+  "8k": "bestvideo[height<=?4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best",
+  "4k": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "2160p": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "1440p": "bestvideo[height<=?1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best",
+  "1080p": "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best[height<=?1080]/best[width<=?1080]/best",
+  "720p": "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best[height<=?720]/best[width<=?720]/best",
+  "480p": "bestvideo[height<=?480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best[height<=?480]/best[width<=?480]/best",
+  "360p": "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best[height<=?360]/best[width<=?360]/best",
+  "240p": "bestvideo[height<=?240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best[height<=?240]/best[width<=?240]/best",
+  "144p": "bestvideo[height<=?144][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best[height<=?144]/best[width<=?144]/best",
+  audio: "bestaudio/best",
+  unknown: "bestvideo+bestaudio/best",
 };
 
 export class YtDlpDownloader implements IDownloaderService {
@@ -518,8 +518,15 @@ export class YtDlpDownloader implements IDownloaderService {
       }
       args.push("-f", formatStr);
 
-      if (options.format !== "mp4") {
-        args.push("--recode-video", options.format);
+      // Force output container and ensure proper merging of separate video+audio streams
+      args.push("--merge-output-format", options.format);
+
+      // Remux into target container format (e.g. mp4) so all media players can decode it
+      args.push("--remux-video", options.format);
+
+      // Faststart: shift moov atom to beginning of file for instant web streaming and playback
+      if (ffmpegBinary && options.format === "mp4") {
+        args.push("--postprocessor-args", "FFmpeg:-movflags +faststart");
       }
     }
 
