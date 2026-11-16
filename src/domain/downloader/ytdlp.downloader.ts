@@ -228,34 +228,7 @@ export class YtDlpDownloader implements IDownloaderService {
     }
   }
 
-  public extractYouTubeId(url: string): string | null {
-    try {
-      const parsed = new URL(url);
-      if (parsed.hostname.includes("youtu.be")) {
-        return parsed.pathname.slice(1).split(/[?#]/)[0] || null;
-      }
-      if (parsed.hostname.includes("youtube.com")) {
-        if (parsed.pathname.startsWith("/shorts/")) {
-          return parsed.pathname.slice("/shorts/".length).split(/[?#]/)[0] || null;
-        }
-        return parsed.searchParams.get("v");
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private getProcessEnv(): NodeJS.ProcessEnv {
-    const nodeDir = path.dirname(process.execPath);
-    const currentPath = process.env.PATH || "";
-    return {
-      ...process.env,
-      PATH: currentPath ? `${nodeDir}${path.delimiter}${currentPath}` : nodeDir,
-    };
-  }
-
-  private buildBaseArgs(playerClient?: string): string[] {
+  private buildBaseArgs(): string[] {
     const args: string[] = [
       "--no-warnings",
       "--no-playlist",
@@ -268,12 +241,8 @@ export class YtDlpDownloader implements IDownloaderService {
       "ejs:npm,ejs:github",
       // Leverage the host's active Node.js runtime to execute YouTube's JS challenges
       "--js-runtimes",
-      `node:${process.execPath}`,
+      "node",
     ];
-
-    if (playerClient) {
-      args.push("--extractor-args", `youtube:player_client=${playerClient}`);
-    }
 
     if (this.proxyUrl) {
       args.push("--proxy", this.proxyUrl);
@@ -339,67 +308,18 @@ export class YtDlpDownloader implements IDownloaderService {
     }
   }
 
-  private async getOembedInfo(url: string): Promise<MediaInfo> {
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    const res = await fetch(oembedUrl);
-    if (!res.ok) {
-      throw new AppError(`Could not fetch YouTube video details (HTTP ${res.status})`);
-    }
-    const data = (await res.json()) as {
-      title?: string;
-      author_name?: string;
-      thumbnail_url?: string;
-    };
-    const id = this.extractYouTubeId(url) || String(Date.now());
-    return {
-      id,
-      title: data.title || "YouTube Video",
-      uploader: data.author_name,
-      thumbnail: data.thumbnail_url,
-      url,
-      availableVideoQualities: [
-        { quality: "1080p", label: "1080p FHD" },
-        { quality: "720p", label: "720p HD" },
-        { quality: "480p", label: "480p SD" },
-        { quality: "360p", label: "360p" },
-      ],
-    };
-  }
-
   public async getMediaInfo(url: string): Promise<MediaInfo> {
-    const isYt = this.isYouTubeUrl(url);
-    const client = isYt ? "android,web" : undefined;
-
-    try {
-      return await this.executeGetMediaInfo(url, client);
-    } catch (err: unknown) {
-      if (isYt && err instanceof Error && err.message.includes("challenged anonymous access")) {
-        this.logger.warn(
-          `yt-dlp probe challenged by YouTube on server IP. Falling back to oEmbed for ${url}...`
-        );
-        try {
-          return await this.getOembedInfo(url);
-        } catch (oembedErr: unknown) {
-          this.logger.error("oEmbed fallback also failed:", oembedErr);
-          throw err;
-        }
-      }
-      throw err;
-    }
-  }
-
-  private async executeGetMediaInfo(url: string, playerClient?: string): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
-        ...this.buildBaseArgs(playerClient),
+        ...this.buildBaseArgs(),
         "--dump-single-json",
         "--skip-download",
         url,
       ];
 
-      const proc = spawn(binary, args, { env: this.getProcessEnv() });
+      const proc = spawn(binary, args);
       let stdout = "";
       let stderr = "";
 
@@ -560,26 +480,6 @@ export class YtDlpDownloader implements IDownloaderService {
   }
 
   public async download(options: DownloadOptions): Promise<DownloadResult> {
-    const isYt = this.isYouTubeUrl(options.url);
-    const defaultClient = isYt ? "android,web" : undefined;
-
-    try {
-      return await this.executeDownload(options, defaultClient);
-    } catch (err: unknown) {
-      if (isYt && err instanceof Error && err.message.includes("challenged anonymous access")) {
-        this.logger.warn(
-          `YouTube bot challenge encountered on android client. Retrying with ios client for ${options.url}...`
-        );
-        return await this.executeDownload(options, "ios,web");
-      }
-      throw err;
-    }
-  }
-
-  private async executeDownload(
-    options: DownloadOptions,
-    playerClient?: string
-  ): Promise<DownloadResult> {
     const binary = await this.ensureBinary();
     const ffmpegBinary = await this.ensureFfmpegBinary();
     const isAudio = AUDIO_FORMATS.includes(options.format);
@@ -587,7 +487,7 @@ export class YtDlpDownloader implements IDownloaderService {
     const outputTemplate = path.join(this.tempDir, `${uniquePrefix}_%(title).100B.%(ext)s`);
 
     const args: string[] = [
-      ...this.buildBaseArgs(playerClient),
+      ...this.buildBaseArgs(),
       "-o",
       outputTemplate,
     ];
@@ -628,7 +528,7 @@ export class YtDlpDownloader implements IDownloaderService {
     this.logger.info(`Starting download for: ${options.url} (Format: ${options.format})`);
 
     return new Promise((resolve, reject) => {
-      const proc = spawn(binary, args, { env: this.getProcessEnv() });
+      const proc = spawn(binary, args);
       let stderr = "";
 
       proc.stdout.on("data", (chunk: Buffer) => {
