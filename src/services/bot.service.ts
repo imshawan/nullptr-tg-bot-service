@@ -18,7 +18,7 @@ import {
   detectWhoAmIIntent,
   formatWhoAmIResponse,
 } from "@/utils/text.utils";
-import { buildUserContextPrompt } from "@/prompts";
+import { buildDynamicContextPrompt } from "@/prompts";
 import { TelegramApiError } from "@/core/errors/app-error";
 import { KeyedAsyncQueue } from "@/core/queue/keyed-async-queue";
 import {
@@ -32,6 +32,7 @@ import {
 export interface BotServiceConfig {
   allowedUserIds: Set<string>;
   streamEditIntervalMs: number;
+  timezone?: string;
 }
 
 export class BotService {
@@ -946,9 +947,13 @@ export class BotService {
     let rateLimitedUntil = 0;
     const baseThrottleMs = Math.max(1500, this.config.streamEditIntervalMs);
 
-    const userContextPrompt = buildUserContextPrompt(sender, BOT_NAME);
+    const dynamicContextPrompt = buildDynamicContextPrompt(
+      sender,
+      BOT_NAME,
+      this.config.timezone || "Asia/Kolkata"
+    );
     const messagesWithContext: ChatMessage[] = [
-      { role: "system", content: userContextPrompt },
+      { role: "system", content: dynamicContextPrompt },
       ...messages,
     ];
 

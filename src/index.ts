@@ -9,9 +9,12 @@ import {
   getConfigTelegramToken,
   getConfigAllowedUserIds,
   getConfigStreamEditIntervalMs,
+  getConfigUserTimezone,
   getConfigOllamaHost,
   getConfigOllamaModel,
   getConfigOllamaAuth,
+  getConfigOllamaNumCtx,
+  getConfigOllamaTemperature,
   getConfigSystemPrompt,
   getConfigMaxHistoryMessages,
   getConfigYtDlpPath,
@@ -21,6 +24,7 @@ import {
   getConfigPort,
   getConfigFileServerBaseUrl,
   getConfigDownloadLinkTtlMinutes,
+  logConfiguration,
 } from "@/config";
 import { ConsoleLogger } from "@/core/logger/console-logger";
 import { TelegramClient } from "@/domain/telegram/telegram.client";
@@ -46,6 +50,9 @@ async function bootstrap(): Promise<void> {
   const logger = new ConsoleLogger(BOT_NAME, getConfigLogLevel());
   logger.info(`Starting ${BOT_NAME} Service...`);
 
+  // Log full environment configuration summary on startup
+  logConfiguration(logger);
+
   const allowedUserIds = getConfigAllowedUserIds();
   const allowedCount = allowedUserIds.size;
   logger.info(
@@ -60,6 +67,8 @@ async function bootstrap(): Promise<void> {
     defaultModel: getConfigOllamaModel(),
     authHeader: getConfigOllamaAuth(),
     systemPrompt: getConfigSystemPrompt(),
+    numCtx: getConfigOllamaNumCtx(),
+    temperature: getConfigOllamaTemperature(),
     logger,
   });
 
@@ -99,6 +108,7 @@ async function bootstrap(): Promise<void> {
     {
       allowedUserIds,
       streamEditIntervalMs: getConfigStreamEditIntervalMs(),
+      timezone: getConfigUserTimezone(),
     },
     telegramClient,
     llmProvider,

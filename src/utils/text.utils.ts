@@ -4,11 +4,12 @@ import {
   isCreator,
   formatUserFullName,
   buildUserContextPrompt,
+  buildDynamicContextPrompt,
   CREATOR_EMAIL,
   CREATOR_WEBSITE,
 } from "@/prompts";
 
-export { isCreator, formatUserFullName, buildUserContextPrompt };
+export { isCreator, formatUserFullName, buildUserContextPrompt, buildDynamicContextPrompt };
 
 /**
  * Splits text into chunks that do not exceed maxLength,
