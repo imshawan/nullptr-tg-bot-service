@@ -18,17 +18,17 @@ import { AppError } from "@/core/errors/app-error";
 const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
-  best: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
-  "8k": "bestvideo[height<=?4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best[height<=?4320]/best[width<=?4320]/best",
-  "4k": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
-  "2160p": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
-  "1440p": "bestvideo[height<=?1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best[height<=?1440]/best[width<=?1440]/best",
-  "1080p": "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best[height<=?1080]/best[width<=?1080]/best",
-  "720p": "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best[height<=?720]/best[width<=?720]/best",
-  "480p": "bestvideo[height<=?480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best[height<=?480]/best[width<=?480]/best",
-  "360p": "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best[height<=?360]/best[width<=?360]/best",
-  "240p": "bestvideo[height<=?240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best[height<=?240]/best[width<=?240]/best",
-  "144p": "bestvideo[height<=?144][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best[height<=?144]/best[width<=?144]/best",
+  best: "bestvideo+bestaudio/best",
+  "8k": "bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best",
+  "4k": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "2160p": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "1440p": "bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best",
+  "1080p": "bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best",
+  "720p": "bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best",
+  "480p": "bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best",
+  "360p": "bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best",
+  "240p": "bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best",
+  "144p": "bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best",
   audio: "bestaudio/best",
   unknown: "bestvideo+bestaudio/best",
 };
@@ -519,9 +519,10 @@ export class YtDlpDownloader implements IDownloaderService {
       args.push("-f", formatStr);
 
       if (options.format === "mp4") {
-        // Prioritize universally compatible H.264 (AVC) and AAC (M4A) codecs
-        // Prevents selecting AV01 or VP9 codecs that fail in QuickTime, Safari, and Telegram
-        args.push("-S", "vcodec:avc,res,acodec:m4a");
+        // Prioritize resolution first (e.g. 4K, 1440p) while preferring universally
+        // compatible H.264 (AVC) and AAC (M4A) codecs within the selected resolution tier.
+        // Prevents demoting 4K/1440p streams to 1080p just because 1080p has an AVC stream.
+        args.push("-S", "res,vcodec:avc,acodec:m4a");
       }
 
       // Force output container and ensure proper merging of separate video+audio streams
@@ -641,7 +642,25 @@ export class YtDlpDownloader implements IDownloaderService {
 
       const isAv1 = /Video:\s*(av01|av1)/i.test(probeOutput);
       const isVp9 = /Video:\s*(vp09|vp9)/i.test(probeOutput);
-      const needsTranscode = isAv1 || isVp9;
+
+      // Detect resolution from FFmpeg stream probe (e.g. 3840x2160, 2560x1440, 1920x1080)
+      let isHighRes = false;
+      const resMatch = probeOutput.match(/Video:[^\n]+?[,\s](\d{3,5})x(\d{3,5})/i);
+      if (resMatch) {
+        const width = parseInt(resMatch[1], 10);
+        const height = parseInt(resMatch[2], 10);
+        if (!isNaN(width) && !isNaN(height)) {
+          isHighRes = Math.max(width, height) > 1920;
+        }
+      } else {
+        // Fallback: look for dimension >= 2000 (e.g. 2160, 2560, 3840, 7680)
+        isHighRes = /(?:[2-9]\d{3}|[1-9]\d{4})x|x(?:[2-9]\d{3}|[1-9]\d{4})/i.test(probeOutput);
+      }
+
+      // Never transcode 4K, 1440p, or 8K on CPU — stream-copy preserves quality, prevents
+      // server overload/timeouts, and modern players/browsers support VP9/AV1 in MP4 natively.
+      // Only transcode non-standard codecs (AV1/VP9) for standard <= 1080p videos.
+      const needsTranscode = (isAv1 || isVp9) && !isHighRes;
 
       let ffmpegArgs: string[];
 
