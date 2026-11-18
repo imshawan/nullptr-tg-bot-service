@@ -18,17 +18,17 @@ import { AppError } from "@/core/errors/app-error";
 const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
-  best: "bestvideo+bestaudio/best",
+  best: "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
   "8k": "bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best",
   "4k": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
   "2160p": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
   "1440p": "bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best",
-  "1080p": "bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best",
-  "720p": "bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best",
-  "480p": "bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best",
-  "360p": "bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best",
-  "240p": "bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best",
-  "144p": "bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best",
+  "1080p": "bestvideo[height<=?1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1080]+bestaudio/best",
+  "720p": "bestvideo[height<=?720][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?720]+bestaudio/best",
+  "480p": "bestvideo[height<=?480][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?480]+bestaudio/best",
+  "360p": "bestvideo[height<=?360][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?360]+bestaudio/best",
+  "240p": "bestvideo[height<=?240][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?240]+bestaudio/best",
+  "144p": "bestvideo[height<=?144][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=?144][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?144]+bestaudio/best",
   audio: "bestaudio/best",
   unknown: "bestvideo+bestaudio/best",
 };
@@ -519,10 +519,8 @@ export class YtDlpDownloader implements IDownloaderService {
       args.push("-f", formatStr);
 
       if (options.format === "mp4") {
-        // Prioritize resolution first (e.g. 4K, 1440p) while preferring universally
-        // compatible H.264 (AVC) and AAC (M4A) codecs within the selected resolution tier.
-        // Prevents demoting 4K/1440p streams to 1080p just because 1080p has an AVC stream.
-        args.push("-S", "res,vcodec:avc,acodec:m4a");
+        // Prioritize universally compatible H.264 (h264) and AAC (M4A) codecs for MP4
+        args.push("-S", "vcodec:h264,res,acodec:m4a");
       }
 
       // Force output container and ensure proper merging of separate video+audio streams
@@ -590,18 +588,20 @@ export class YtDlpDownloader implements IDownloaderService {
           }
 
           const stats = await fsPromises.stat(filePath);
+          const finalFilename = path.basename(filePath);
+          const finalFormat = (path.extname(filePath).replace(/^\./, "") || options.format) as MediaFormat;
 
           // Strip the unique prefix for user-facing title
-          const cleanTitle = matchedFile
+          const cleanTitle = finalFilename
             .replace(new RegExp(`^${uniquePrefix}_`), "")
             .replace(/\.[^/.]+$/, "");
 
           resolve({
             filePath,
-            filename: matchedFile,
+            filename: finalFilename,
             fileSizeBytes: stats.size,
             title: cleanTitle,
-            format: options.format,
+            format: finalFormat,
             isAudio,
           });
         } catch (err: unknown) {
@@ -657,18 +657,41 @@ export class YtDlpDownloader implements IDownloaderService {
         isHighRes = /(?:[2-9]\d{3}|[1-9]\d{4})x|x(?:[2-9]\d{3}|[1-9]\d{4})/i.test(probeOutput);
       }
 
-      // Never transcode 4K, 1440p, or 8K on CPU — stream-copy preserves quality, prevents
-      // server overload/timeouts, and modern players/browsers support VP9/AV1 in MP4 natively.
-      // Only transcode non-standard codecs (AV1/VP9) for standard <= 1080p videos.
-      const needsTranscode = (isAv1 || isVp9) && !isHighRes;
+      // Case 1: High-res videos (4K / 1440p / 8K) with VP9 or AV1 codecs.
+      // Apple devices (QuickTime, Safari, iOS AVPlayer) reject VP9/AV1 inside MP4 containers.
+      // However, modern Safari (macOS 11+, iOS 14+), Chrome, Firefox, and VLC natively play VP9/AV1
+      // when encapsulated in a WebM container. Remuxing to WebM with -c copy is instantaneous (<0.2s),
+      // consumes zero CPU, and delivers true 4K playback.
+      if (isHighRes && (isVp9 || isAv1)) {
+        const webmPath = filePath.replace(/\.[^/.]+$/, ".webm");
+        this.logger.info(
+          `Remuxing high-res ${isAv1 ? "AV1" : "VP9"} stream into WebM container for web playback: ${webmPath}`
+        );
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ["-y", "-i", filePath, "-c", "copy", webmPath]);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", () => resolve(false));
+        });
 
-      let ffmpegArgs: string[];
+        if (success && fs.existsSync(webmPath)) {
+          const webmStats = await fsPromises.stat(webmPath);
+          if (webmStats.size > 1024) {
+            await fsPromises.unlink(filePath).catch(() => {});
+            this.logger.debug(`Successfully remuxed high-res media to WebM: ${webmPath}`);
+            return webmPath;
+          }
+        }
+      }
 
-      if (needsTranscode) {
+      // Case 2: Standard <= 1080p video with non-native codec (AV1 or VP9) in MP4.
+      // Transcode to universally playable H.264 (libx264) with standard 8-bit YUV420P color space.
+      if ((isAv1 || isVp9) && !isHighRes) {
         this.logger.info(
           `Detected non-native codec in MP4 (${isAv1 ? "AV1" : "VP9"}). Transcoding to H.264 for playback compatibility: ${filePath}`
         );
-        ffmpegArgs = [
+        const ffmpegArgs = [
           "-y",
           "-i",
           filePath,
@@ -678,6 +701,8 @@ export class YtDlpDownloader implements IDownloaderService {
           "veryfast",
           "-crf",
           "22",
+          "-pix_fmt",
+          "yuv420p",
           "-c:a",
           "aac",
           "-b:a",
@@ -686,9 +711,31 @@ export class YtDlpDownloader implements IDownloaderService {
           "+faststart",
           fixedPath,
         ];
+
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ffmpegArgs);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", (err) => {
+            this.logger.warn(`FFmpeg transcode error: ${err.message}`);
+            resolve(false);
+          });
+        });
+
+        if (success && fs.existsSync(fixedPath)) {
+          const fixedStats = await fsPromises.stat(fixedPath);
+          if (fixedStats.size > 1024) {
+            await fsPromises.unlink(filePath);
+            await fsPromises.rename(fixedPath, filePath);
+            this.logger.debug(`Successfully transcoded and flattened MP4: ${filePath}`);
+            return filePath;
+          }
+        }
       } else {
-        // Fast remux: stream copy takes < 0.2s, flattens fragmented MP4 and shifts moov atom
-        ffmpegArgs = [
+        // Case 3: Native H.264 video (YouTube 1080p, Instagram, Twitter, etc.).
+        // Fast remux: stream copy takes < 0.2s, flattens fragmented MP4 (fMP4/moof) and shifts moov atom to byte 0.
+        const ffmpegArgs = [
           "-y",
           "-i",
           filePath,
@@ -698,24 +745,26 @@ export class YtDlpDownloader implements IDownloaderService {
           "+faststart",
           fixedPath,
         ];
-      }
 
-      const success = await new Promise<boolean>((resolve) => {
-        const proc = spawn(ffmpegBinary, ffmpegArgs);
-        proc.on("close", (code) => resolve(code === 0));
-        proc.on("error", (err) => {
-          this.logger.warn(`FFmpeg sanitization error: ${err.message}`);
-          resolve(false);
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ffmpegArgs);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", (err) => {
+            this.logger.warn(`FFmpeg faststart error: ${err.message}`);
+            resolve(false);
+          });
         });
-      });
 
-      if (success && fs.existsSync(fixedPath)) {
-        const fixedStats = await fsPromises.stat(fixedPath);
-        if (fixedStats.size > 1024) {
-          await fsPromises.unlink(filePath);
-          await fsPromises.rename(fixedPath, filePath);
-          this.logger.debug(`Successfully verified and flattened MP4: ${filePath}`);
-          return filePath;
+        if (success && fs.existsSync(fixedPath)) {
+          const fixedStats = await fsPromises.stat(fixedPath);
+          if (fixedStats.size > 1024) {
+            await fsPromises.unlink(filePath);
+            await fsPromises.rename(fixedPath, filePath);
+            this.logger.debug(`Successfully verified and flattened MP4: ${filePath}`);
+            return filePath;
+          }
         }
       }
     } catch (err: unknown) {
