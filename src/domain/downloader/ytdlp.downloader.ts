@@ -330,6 +330,9 @@ export class YtDlpDownloader implements IDownloaderService {
     if (lower.includes("connection refused") || lower.includes("unreachable network")) {
       return new AppError("Network error: Could not reach the media host.");
     }
+    if (lower.includes("unsupported") || lower.includes("unsupported url")) {
+      return new AppError("URL not supported. Please send a direct link to a supported video or post if you are trying to download media.");
+    }
 
     const codeStr = code !== null ? String(code) : "unknown";
     return new AppError(`yt-dlp error (${codeStr}): ${trimmed || "Failed to process media request"}`);
