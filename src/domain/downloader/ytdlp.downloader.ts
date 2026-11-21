@@ -18,20 +18,147 @@ import { AppError } from "@/core/errors/app-error";
 const AUDIO_FORMATS: MediaFormat[] = ["mp3", "m4a", "wav", "flac", "aac", "opus"];
 
 const QUALITY_MAP: Record<MediaQuality, string> = {
-  best: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
-  "8k": "bestvideo[height<=?4320][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best[height<=?4320]/best[width<=?4320]/best",
-  "4k": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
-  "2160p": "bestvideo[height<=?2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best[height<=?2160]/best[width<=?2160]/best",
-  "1440p": "bestvideo[height<=?1440][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best[height<=?1440]/best[width<=?1440]/best",
-  "1080p": "bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best[height<=?1080]/best[width<=?1080]/best",
-  "720p": "bestvideo[height<=?720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best[height<=?720]/best[width<=?720]/best",
-  "480p": "bestvideo[height<=?480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best[height<=?480]/best[width<=?480]/best",
-  "360p": "bestvideo[height<=?360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best[height<=?360]/best[width<=?360]/best",
-  "240p": "bestvideo[height<=?240][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best[height<=?240]/best[width<=?240]/best",
-  "144p": "bestvideo[height<=?144][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best[height<=?144]/best[width<=?144]/best",
+  best: "bestvideo+bestaudio/best",
+  "8k": "bestvideo[height<=?4320]+bestaudio/bestvideo[width<=?4320]+bestaudio/bestvideo+bestaudio/best",
+  "4k": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "2160p": "bestvideo[height<=?2160]+bestaudio/bestvideo[width<=?2160]+bestaudio/bestvideo+bestaudio/best",
+  "1440p": "bestvideo[height<=?1440]+bestaudio/bestvideo[width<=?1440]+bestaudio/bestvideo+bestaudio/best",
+  "1080p": "bestvideo[height<=?1080]+bestaudio/bestvideo[width<=?1080]+bestaudio/bestvideo+bestaudio/best",
+  "720p": "bestvideo[height<=?720]+bestaudio/bestvideo[width<=?720]+bestaudio/bestvideo+bestaudio/best",
+  "480p": "bestvideo[height<=?480]+bestaudio/bestvideo[width<=?480]+bestaudio/bestvideo+bestaudio/best",
+  "360p": "bestvideo[height<=?360]+bestaudio/bestvideo[width<=?360]+bestaudio/bestvideo+bestaudio/best",
+  "240p": "bestvideo[height<=?240]+bestaudio/bestvideo[width<=?240]+bestaudio/bestvideo+bestaudio/best",
+  "144p": "bestvideo[height<=?144]+bestaudio/bestvideo[width<=?144]+bestaudio/bestvideo+bestaudio/best",
   audio: "bestaudio/best",
   unknown: "bestvideo+bestaudio/best",
 };
+
+/**
+ * Known media hosting platforms natively supported by yt-dlp.
+ * Used to prevent false-positive media download intercepts on non-media URLs (e.g. Google Maps, GitHub, Wikipedia).
+ */
+const SUPPORTED_MEDIA_DOMAINS: string[] = [
+  // YouTube
+  "youtube.com",
+  "youtu.be",
+  "yt.be",
+
+  // Instagram & Threads
+  "instagram.com",
+  "instagr.am",
+  "threads.net",
+  "threads.com",
+
+  // Twitter / X
+  "twitter.com",
+  "x.com",
+  "t.co",
+
+  // TikTok & ByteDance
+  "tiktok.com",
+  "douyin.com",
+
+  // Facebook & Meta
+  "facebook.com",
+  "fb.watch",
+  "fb.com",
+  "fb.gg",
+
+  // Reddit
+  "reddit.com",
+  "redd.it",
+  "v.redd.it",
+
+  // Pinterest
+  "pinterest.com",
+  "pin.it",
+
+  // Twitch
+  "twitch.tv",
+
+  // Vimeo
+  "vimeo.com",
+
+  // SoundCloud
+  "soundcloud.com",
+
+  // Spotify
+  "spotify.com",
+  "spotify.link",
+
+  // Dailymotion
+  "dailymotion.com",
+  "dai.ly",
+
+  // Bilibili
+  "bilibili.com",
+  "b23.tv",
+  "bilibili.tv",
+
+  // Rumble
+  "rumble.com",
+
+  // Streamable & Loom
+  "streamable.com",
+  "loom.com",
+
+  // Bandcamp & Mixcloud
+  "bandcamp.com",
+  "mixcloud.com",
+
+  // Music Streaming & Podcasts
+  "audiomack.com",
+  "deezer.com",
+  "deezer.page.link",
+  "podcasts.apple.com",
+
+  // Alternative & Peer Video Platforms
+  "odysee.com",
+  "lbry.tv",
+  "bitchute.com",
+  "kick.com",
+  "coub.com",
+  "9gag.com",
+  "imgur.com",
+  "redgifs.com",
+  "rutube.ru",
+  "vk.com",
+  "vkvideo.ru",
+  "ok.ru",
+  "snapchat.com",
+  "tumblr.com",
+  "archive.org",
+  "ted.com",
+];
+
+/**
+ * Direct video, audio, or streaming manifest file extensions supported by yt-dlp / FFmpeg.
+ */
+const DIRECT_MEDIA_EXTENSIONS = new Set([
+  // Video
+  ".mp4",
+  ".m4v",
+  ".mkv",
+  ".webm",
+  ".mov",
+  ".avi",
+  ".flv",
+  ".wmv",
+  ".ts",
+  ".3gp",
+  // Audio
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".flac",
+  ".aac",
+  ".opus",
+  ".ogg",
+  ".wma",
+  // Streaming Manifests
+  ".m3u8",
+  ".mpd",
+]);
 
 export class YtDlpDownloader implements IDownloaderService {
   private ytdlpBinaryPath: string | null = null;
@@ -205,7 +332,28 @@ export class YtDlpDownloader implements IDownloaderService {
     if (!url) return false;
     try {
       const parsed = new URL(url);
-      return ["http:", "https:"].includes(parsed.protocol);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return false;
+      }
+
+      const host = parsed.hostname.toLowerCase();
+
+      // 1. Check if hostname matches any known yt-dlp supported media platform
+      const isMediaDomain = SUPPORTED_MEDIA_DOMAINS.some(
+        (domain) => host === domain || host.endsWith(`.${domain}`)
+      );
+      if (isMediaDomain) {
+        return true;
+      }
+
+      // 2. Check if the URL directly points to a media file or streaming manifest (ignoring query parameters)
+      const pathname = parsed.pathname.toLowerCase();
+      const ext = path.extname(pathname);
+      if (DIRECT_MEDIA_EXTENSIONS.has(ext)) {
+        return true;
+      }
+
+      return false;
     } catch {
       return false;
     }
@@ -213,7 +361,40 @@ export class YtDlpDownloader implements IDownloaderService {
 
   public extractUrl(text: string): string | null {
     const match = text.match(/https?:\/\/[^\s<>"'{}|\\^`[\]]+/i);
-    return match ? match[0] : null;
+    return match ? this.cleanMediaUrl(match[0]) : null;
+  }
+
+  /**
+   * Cleans media URLs by stripping tracking parameters (e.g. ?igsh=..., ?utm_source=...)
+   * which can cause Instagram and other extractors to fail with empty responses.
+   */
+  public cleanMediaUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (
+        parsed.hostname.includes("instagram.com") ||
+        parsed.hostname.includes("instagr.am")
+      ) {
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  }
+
+  public isInstagramUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return (
+        parsed.hostname.includes("instagram.com") ||
+        parsed.hostname.includes("instagr.am")
+      );
+    } catch {
+      return false;
+    }
   }
 
   public isYouTubeUrl(url: string): boolean {
@@ -270,6 +451,12 @@ export class YtDlpDownloader implements IDownloaderService {
       );
     }
 
+    if (lower.includes("empty media response")) {
+      return new AppError(
+        "Instagram sent an empty media response. The post or reel may be private, age-restricted, or temporarily restricted from anonymous access."
+      );
+    }
+
     if (lower.includes("requested format is not available")) {
       return new AppError("The requested format or quality is not available for this media.");
     }
@@ -308,12 +495,34 @@ export class YtDlpDownloader implements IDownloaderService {
     }
   }
 
-  public async getMediaInfo(url: string): Promise<MediaInfo> {
+  public async getMediaInfo(rawUrl: string): Promise<MediaInfo> {
+    const url = this.cleanMediaUrl(rawUrl);
+    const isIg = this.isInstagramUrl(url);
+
+    try {
+      return await this.executeGetMediaInfo(url);
+    } catch (err: unknown) {
+      if (isIg && err instanceof Error && err.message.toLowerCase().includes("empty media response")) {
+        this.logger.warn(
+          `Instagram returned empty media response for ${url}. Retrying with ios app_id extractor arg...`
+        );
+        try {
+          return await this.executeGetMediaInfo(url, ["--extractor-args", "instagram:app_id=ios"]);
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async executeGetMediaInfo(url: string, extraArgs: string[] = []): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
         ...this.buildBaseArgs(),
+        ...extraArgs,
         "--dump-single-json",
         "--skip-download",
         url,
@@ -480,6 +689,31 @@ export class YtDlpDownloader implements IDownloaderService {
   }
 
   public async download(options: DownloadOptions): Promise<DownloadResult> {
+    const url = this.cleanMediaUrl(options.url);
+    const cleanOptions = { ...options, url };
+    const isIg = this.isInstagramUrl(url);
+
+    try {
+      return await this.executeDownload(cleanOptions);
+    } catch (err: unknown) {
+      if (isIg && err instanceof Error && err.message.toLowerCase().includes("empty media response")) {
+        this.logger.warn(
+          `Instagram returned empty media response on download for ${url}. Retrying with ios app_id...`
+        );
+        try {
+          return await this.executeDownload(cleanOptions, ["--extractor-args", "instagram:app_id=ios"]);
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async executeDownload(
+    options: DownloadOptions,
+    extraArgs: string[] = []
+  ): Promise<DownloadResult> {
     const binary = await this.ensureBinary();
     const ffmpegBinary = await this.ensureFfmpegBinary();
     const isAudio = AUDIO_FORMATS.includes(options.format);
@@ -488,6 +722,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
     const args: string[] = [
       ...this.buildBaseArgs(),
+      ...extraArgs,
       "-o",
       outputTemplate,
     ];
@@ -519,9 +754,20 @@ export class YtDlpDownloader implements IDownloaderService {
       args.push("-f", formatStr);
 
       if (options.format === "mp4") {
-        // Prioritize universally compatible H.264 (AVC) and AAC (M4A) codecs
-        // Prevents selecting AV01 or VP9 codecs that fail in QuickTime, Safari, and Telegram
-        args.push("-S", "vcodec:avc,res,acodec:m4a");
+        const isHighResQuality =
+          quality === "4k" ||
+          quality === "2160p" ||
+          quality === "1440p" ||
+          quality === "8k" ||
+          quality === "best";
+
+        if (isHighResQuality) {
+          // Prioritize resolution first for 4K/1440p/8K/best so true high-res streams are downloaded
+          args.push("-S", "res,vcodec:h264,acodec:m4a");
+        } else {
+          // Prioritize universally compatible H.264 for standard <= 1080p tiers
+          args.push("-S", "vcodec:h264,res,acodec:m4a");
+        }
       }
 
       // Force output container and ensure proper merging of separate video+audio streams
@@ -589,18 +835,20 @@ export class YtDlpDownloader implements IDownloaderService {
           }
 
           const stats = await fsPromises.stat(filePath);
+          const finalFilename = path.basename(filePath);
+          const finalFormat = (path.extname(filePath).replace(/^\./, "") || options.format) as MediaFormat;
 
           // Strip the unique prefix for user-facing title
-          const cleanTitle = matchedFile
+          const cleanTitle = finalFilename
             .replace(new RegExp(`^${uniquePrefix}_`), "")
             .replace(/\.[^/.]+$/, "");
 
           resolve({
             filePath,
-            filename: matchedFile,
+            filename: finalFilename,
             fileSizeBytes: stats.size,
             title: cleanTitle,
-            format: options.format,
+            format: finalFormat,
             isAudio,
           });
         } catch (err: unknown) {
@@ -641,15 +889,69 @@ export class YtDlpDownloader implements IDownloaderService {
 
       const isAv1 = /Video:\s*(av01|av1)/i.test(probeOutput);
       const isVp9 = /Video:\s*(vp09|vp9)/i.test(probeOutput);
-      const needsTranscode = isAv1 || isVp9;
 
-      let ffmpegArgs: string[];
+      // Detect resolution from FFmpeg stream probe (e.g. 3840x2160, 2560x1440, 1920x1080)
+      let isHighRes = false;
+      const resMatch = probeOutput.match(/Video:[^\n]+?[,\s](\d{3,5})x(\d{3,5})/i);
+      if (resMatch) {
+        const width = parseInt(resMatch[1], 10);
+        const height = parseInt(resMatch[2], 10);
+        if (!isNaN(width) && !isNaN(height)) {
+          isHighRes = Math.max(width, height) > 1920;
+        }
+      } else {
+        // Fallback: look for dimension >= 2000 (e.g. 2160, 2560, 3840, 7680)
+        isHighRes = /(?:[2-9]\d{3}|[1-9]\d{4})x|x(?:[2-9]\d{3}|[1-9]\d{4})/i.test(probeOutput);
+      }
 
-      if (needsTranscode) {
+      // Case 1: High-res videos (4K / 1440p / 8K) with VP9 or AV1 codecs.
+      // Apple devices (QuickTime, Safari, iOS AVPlayer) reject VP9/AV1 inside MP4 containers.
+      // However, modern Safari (macOS 11+, iOS 14+), Chrome, Firefox, and VLC natively play VP9/AV1
+      // when encapsulated in a WebM container with Opus audio.
+      // Remuxing video with -c:v copy and converting audio to Opus with -c:a libopus takes <0.05s,
+      // consumes zero CPU for video, and delivers 100% playable 4K.
+      if (isHighRes && (isVp9 || isAv1)) {
+        const webmPath = filePath.replace(/\.[^/.]+$/, ".webm");
+        this.logger.info(
+          `Remuxing high-res ${isAv1 ? "AV1" : "VP9"} stream into WebM container for web playback: ${webmPath}`
+        );
+        const ffmpegArgs = [
+          "-y",
+          "-i",
+          filePath,
+          "-c:v",
+          "copy",
+          "-c:a",
+          "libopus",
+          "-b:a",
+          "160k",
+          webmPath,
+        ];
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ffmpegArgs);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", () => resolve(false));
+        });
+
+        if (success && fs.existsSync(webmPath)) {
+          const webmStats = await fsPromises.stat(webmPath);
+          if (webmStats.size > 1024) {
+            await fsPromises.unlink(filePath).catch(() => {});
+            this.logger.debug(`Successfully remuxed high-res media to WebM: ${webmPath}`);
+            return webmPath;
+          }
+        }
+      }
+
+      // Case 2: Standard <= 1080p video with non-native codec (AV1 or VP9) in MP4.
+      // Transcode to universally playable H.264 (libx264) with standard 8-bit YUV420P color space.
+      if ((isAv1 || isVp9) && !isHighRes) {
         this.logger.info(
           `Detected non-native codec in MP4 (${isAv1 ? "AV1" : "VP9"}). Transcoding to H.264 for playback compatibility: ${filePath}`
         );
-        ffmpegArgs = [
+        const ffmpegArgs = [
           "-y",
           "-i",
           filePath,
@@ -659,6 +961,8 @@ export class YtDlpDownloader implements IDownloaderService {
           "veryfast",
           "-crf",
           "22",
+          "-pix_fmt",
+          "yuv420p",
           "-c:a",
           "aac",
           "-b:a",
@@ -667,9 +971,33 @@ export class YtDlpDownloader implements IDownloaderService {
           "+faststart",
           fixedPath,
         ];
-      } else {
-        // Fast remux: stream copy takes < 0.2s, flattens fragmented MP4 and shifts moov atom
-        ffmpegArgs = [
+
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ffmpegArgs);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", (err) => {
+            this.logger.warn(`FFmpeg transcode error: ${err.message}`);
+            resolve(false);
+          });
+        });
+
+        if (success && fs.existsSync(fixedPath)) {
+          const fixedStats = await fsPromises.stat(fixedPath);
+          if (fixedStats.size > 1024) {
+            await fsPromises.unlink(filePath);
+            await fsPromises.rename(fixedPath, filePath);
+            this.logger.debug(`Successfully transcoded and flattened MP4: ${filePath}`);
+            return filePath;
+          }
+        }
+      }
+
+      // Case 3: Native H.264 video (YouTube 1080p, Instagram, Twitter, etc.).
+      // Fast remux: stream copy takes < 0.2s, flattens fragmented MP4 (fMP4/moof) and shifts moov atom to byte 0.
+      if (!isAv1 && !isVp9) {
+        const ffmpegArgs = [
           "-y",
           "-i",
           filePath,
@@ -679,24 +1007,26 @@ export class YtDlpDownloader implements IDownloaderService {
           "+faststart",
           fixedPath,
         ];
-      }
 
-      const success = await new Promise<boolean>((resolve) => {
-        const proc = spawn(ffmpegBinary, ffmpegArgs);
-        proc.on("close", (code) => resolve(code === 0));
-        proc.on("error", (err) => {
-          this.logger.warn(`FFmpeg sanitization error: ${err.message}`);
-          resolve(false);
+        const success = await new Promise<boolean>((resolve) => {
+          const proc = spawn(ffmpegBinary, ffmpegArgs);
+          proc.stderr.resume();
+          proc.stdout.resume();
+          proc.on("close", (code) => resolve(code === 0));
+          proc.on("error", (err) => {
+            this.logger.warn(`FFmpeg faststart error: ${err.message}`);
+            resolve(false);
+          });
         });
-      });
 
-      if (success && fs.existsSync(fixedPath)) {
-        const fixedStats = await fsPromises.stat(fixedPath);
-        if (fixedStats.size > 1024) {
-          await fsPromises.unlink(filePath);
-          await fsPromises.rename(fixedPath, filePath);
-          this.logger.debug(`Successfully verified and flattened MP4: ${filePath}`);
-          return filePath;
+        if (success && fs.existsSync(fixedPath)) {
+          const fixedStats = await fsPromises.stat(fixedPath);
+          if (fixedStats.size > 1024) {
+            await fsPromises.unlink(filePath);
+            await fsPromises.rename(fixedPath, filePath);
+            this.logger.debug(`Successfully verified and flattened MP4: ${filePath}`);
+            return filePath;
+          }
         }
       }
     } catch (err: unknown) {

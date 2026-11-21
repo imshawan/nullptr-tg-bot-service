@@ -29,10 +29,13 @@ export class FileServerService implements IFileServerService {
   private resolvedBaseUrl?: string;
   private readonly defaultTtlMinutes: number;
   private readonly allowedDir: string;
+  private readonly registryPath: string;
   private readonly logger: ILogger;
   private server: http.Server | null = null;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private readonly entries = new Map<string, DownloadEntry>();
+  private isSavingRegistry = false;
+  private pendingSave = false;
 
   constructor(options: {
     port: number;
@@ -45,7 +48,12 @@ export class FileServerService implements IFileServerService {
     this.configuredBaseUrl = options.baseUrl?.replace(/\/+$/, "");
     this.defaultTtlMinutes = options.defaultTtlMinutes || 120;
     this.allowedDir = path.resolve(options.allowedDir || path.join(os.tmpdir(), "nullptr-downloads"));
+    this.registryPath = path.join(this.allowedDir, ".registry.json");
     this.logger = options.logger.child("FileServer");
+
+    if (!fs.existsSync(this.allowedDir)) {
+      fs.mkdirSync(this.allowedDir, { recursive: true });
+    }
   }
 
   public async start(): Promise<void> {
@@ -53,7 +61,11 @@ export class FileServerService implements IFileServerService {
       return;
     }
 
-    // Resolve base URL (configured or auto-detected public IP)
+    // 1. Reconcile persisted download registry and purge stale/orphaned files on disk from prior sessions
+    await this.loadRegistry();
+    await this.scavengeOrphanedDiskFiles();
+
+    // 2. Resolve base URL (configured or auto-detected public IP)
     if (this.configuredBaseUrl) {
       this.resolvedBaseUrl = this.configuredBaseUrl;
     } else {
@@ -75,8 +87,11 @@ export class FileServerService implements IFileServerService {
       });
     });
 
-    // Start background file cleanup timer (runs every 10 minutes)
-    this.cleanupTimer = setInterval(() => this.purgeExpiredFiles(), 10 * 60 * 1000);
+    // 3. Start background cleanup timer (runs every 10 minutes to purge expired links and disk fragments)
+    this.cleanupTimer = setInterval(async () => {
+      await this.purgeExpiredFiles();
+      await this.scavengeOrphanedDiskFiles();
+    }, 10 * 60 * 1000);
     this.cleanupTimer.unref();
   }
 
@@ -85,6 +100,8 @@ export class FileServerService implements IFileServerService {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+
+    await this.saveRegistry().catch(() => {});
 
     if (this.server) {
       await new Promise<void>((resolve) => {
@@ -118,10 +135,12 @@ export class FileServerService implements IFileServerService {
     const durationMs = (ttlMinutes || this.defaultTtlMinutes) * 60 * 1000;
     const now = Date.now();
 
+    const userFriendlyFilename = (title ? `${title}${ext}` : filename).replace(/^dl_\d+_[a-z0-9]+_/, "");
+
     const entry: DownloadEntry = {
       token,
       filePath,
-      filename,
+      filename: userFriendlyFilename,
       title: title || filename,
       fileSizeBytes: stats.size,
       mimeType,
@@ -130,8 +149,19 @@ export class FileServerService implements IFileServerService {
     };
 
     this.entries.set(token, entry);
+    await this.saveRegistry();
 
-    const safeFilename = encodeURIComponent(filename.replace(/[/\\?%*:|"<>]/g, "_"));
+    // Sanitize filename for URL path to prevent breaking Telegram Markdown links:
+    // Strip temporary prefix, replace all brackets, parentheses, spaces, and unsafe symbols with underscores.
+    const cleanBase = filename
+      .replace(/^dl_\d+_[a-z0-9]+_/, "")
+      .replace(/[/\\?%*:|"<>()[\]#\s]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const safeFilename = encodeURIComponent(
+      (cleanBase || "media").endsWith(ext) ? cleanBase : `${cleanBase}${ext}`
+    ).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
     const downloadUrl = `${this.getBaseUrl()}/dl/${token}/${safeFilename}`;
 
     this.logger.info(
@@ -188,6 +218,7 @@ export class FileServerService implements IFileServerService {
 
     if (Date.now() > entry.expiresAt) {
       this.entries.delete(token);
+      await this.saveRegistry().catch(() => {});
       await fsPromises.unlink(entry.filePath).catch(() => {});
       const html = renderErrorView({
         statusCode: 410,
@@ -223,6 +254,7 @@ export class FileServerService implements IFileServerService {
 
     if (!fs.existsSync(entry.filePath)) {
       this.entries.delete(token);
+      await this.saveRegistry().catch(() => {});
       const html = renderErrorView({
         statusCode: 404,
         title: "File Not Found",
@@ -387,16 +419,181 @@ export class FileServerService implements IFileServerService {
 
   private async purgeExpiredFiles(): Promise<void> {
     const now = Date.now();
+    let changed = false;
+
     for (const [token, entry] of this.entries.entries()) {
       if (now > entry.expiresAt) {
         this.logger.info(`Purging expired download: "${entry.filename}" (Token: ${token})`);
         this.entries.delete(token);
+        changed = true;
         try {
           await fsPromises.unlink(entry.filePath);
         } catch {
           // File may already have been removed
         }
       }
+    }
+
+    if (changed) {
+      await this.saveRegistry();
+    }
+  }
+
+  private async saveRegistry(): Promise<void> {
+    if (this.isSavingRegistry) {
+      this.pendingSave = true;
+      return;
+    }
+    this.isSavingRegistry = true;
+
+    try {
+      const data = Array.from(this.entries.values());
+      const tempPath = `${this.registryPath}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`;
+      await fsPromises.writeFile(tempPath, JSON.stringify(data, null, 2), "utf-8");
+      await fsPromises.rename(tempPath, this.registryPath);
+    } catch (err: unknown) {
+      this.logger.warn("Failed to persist download registry to disk", {
+        error: String(err),
+      });
+    } finally {
+      this.isSavingRegistry = false;
+      if (this.pendingSave) {
+        this.pendingSave = false;
+        await this.saveRegistry();
+      }
+    }
+  }
+
+  private async loadRegistry(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.registryPath)) {
+        return;
+      }
+      const raw = await fsPromises.readFile(this.registryPath, "utf-8");
+      const entries: DownloadEntry[] = JSON.parse(raw);
+      if (!Array.isArray(entries)) {
+        return;
+      }
+
+      const now = Date.now();
+      let restoredCount = 0;
+      let expiredCount = 0;
+
+      for (const entry of entries) {
+        if (!entry || !entry.token || !entry.filePath) continue;
+
+        // Path Traversal Security check: file must reside strictly inside allowedDir
+        const resolvedPath = path.resolve(entry.filePath);
+        if (!resolvedPath.startsWith(this.allowedDir)) {
+          this.logger.warn(`Ignoring entry outside allowed directory: ${resolvedPath}`);
+          continue;
+        }
+
+        if (now < entry.expiresAt && fs.existsSync(resolvedPath)) {
+          this.entries.set(entry.token, {
+            ...entry,
+            filePath: resolvedPath,
+          });
+          restoredCount++;
+        } else {
+          expiredCount++;
+          if (fs.existsSync(resolvedPath)) {
+            await fsPromises.unlink(resolvedPath).catch(() => {});
+          }
+        }
+      }
+
+      if (restoredCount > 0 || expiredCount > 0) {
+        this.logger.info(
+          `Reconciled download registry on startup: ${restoredCount} active link(s) restored, ${expiredCount} expired link(s) purged.`
+        );
+        await this.saveRegistry();
+      }
+    } catch (err: unknown) {
+      this.logger.warn("Failed to parse existing download registry on startup, starting fresh", {
+        error: String(err),
+      });
+    }
+  }
+
+  private async scavengeOrphanedDiskFiles(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.allowedDir)) {
+        return;
+      }
+      const files = await fsPromises.readdir(this.allowedDir);
+      const now = Date.now();
+      const maxAgeMs = this.defaultTtlMinutes * 60 * 1000;
+      // 15-minute grace period for unindexed files to guarantee in-flight downloads are never interrupted
+      const unindexedGracePeriodMs = 15 * 60 * 1000;
+      let reclaimedBytes = 0;
+      let prunedCount = 0;
+
+      // Set of all currently registered active file paths in memory
+      const registeredPaths = new Set(
+        Array.from(this.entries.values()).map((e) => path.resolve(e.filePath))
+      );
+
+      for (const file of files) {
+        // Never touch the registry or its temp files
+        if (file.startsWith(".registry.json")) {
+          continue;
+        }
+
+        const fullPath = path.resolve(path.join(this.allowedDir, file));
+        let stats: fs.Stats;
+        try {
+          stats = await fsPromises.stat(fullPath);
+        } catch {
+          continue;
+        }
+
+        if (stats.isDirectory()) {
+          continue;
+        }
+
+        const isTransient =
+          file.endsWith(".part") ||
+          file.endsWith(".ytdl") ||
+          file.endsWith(".tmp") ||
+          file.includes(".fixed.mp4");
+
+        const isBotDownload = file.startsWith("dl_");
+
+        // 1. Clean up transient artifacts older than grace period
+        if (isTransient && now - stats.mtimeMs > unindexedGracePeriodMs) {
+          reclaimedBytes += stats.size;
+          prunedCount++;
+          await fsPromises.unlink(fullPath).catch(() => {});
+          continue;
+        }
+
+        // 2. Clean up media downloads:
+        // - If registered: pruned when now > entry.expiresAt or stats.mtimeMs > maxAgeMs
+        // - If unindexed: pruned once older than grace period (reclaims stale files from dead/restarted processes)
+        if (isBotDownload) {
+          const isRegistered = registeredPaths.has(fullPath);
+          const isExpiredByMtime = now - stats.mtimeMs > maxAgeMs;
+          const isUnindexedOrphan = !isRegistered && now - stats.mtimeMs > unindexedGracePeriodMs;
+
+          if (isExpiredByMtime || isUnindexedOrphan) {
+            reclaimedBytes += stats.size;
+            prunedCount++;
+            await fsPromises.unlink(fullPath).catch(() => {});
+          }
+        }
+      }
+
+      if (prunedCount > 0) {
+        const sizeMb = (reclaimedBytes / (1024 * 1024)).toFixed(1);
+        this.logger.info(
+          `Disk scavenger reclaimed ${sizeMb} MB across ${prunedCount} stale/orphaned file(s).`
+        );
+      }
+    } catch (err: unknown) {
+      this.logger.warn("Failed to sweep orphaned files in downloads directory", {
+        error: String(err),
+      });
     }
   }
 
