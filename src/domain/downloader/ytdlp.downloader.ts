@@ -33,6 +33,133 @@ const QUALITY_MAP: Record<MediaQuality, string> = {
   unknown: "bestvideo+bestaudio/best",
 };
 
+/**
+ * Known media hosting platforms natively supported by yt-dlp.
+ * Used to prevent false-positive media download intercepts on non-media URLs (e.g. Google Maps, GitHub, Wikipedia).
+ */
+const SUPPORTED_MEDIA_DOMAINS: string[] = [
+  // YouTube
+  "youtube.com",
+  "youtu.be",
+  "yt.be",
+
+  // Instagram & Threads
+  "instagram.com",
+  "instagr.am",
+  "threads.net",
+  "threads.com",
+
+  // Twitter / X
+  "twitter.com",
+  "x.com",
+  "t.co",
+
+  // TikTok & ByteDance
+  "tiktok.com",
+  "douyin.com",
+
+  // Facebook & Meta
+  "facebook.com",
+  "fb.watch",
+  "fb.com",
+  "fb.gg",
+
+  // Reddit
+  "reddit.com",
+  "redd.it",
+  "v.redd.it",
+
+  // Pinterest
+  "pinterest.com",
+  "pin.it",
+
+  // Twitch
+  "twitch.tv",
+
+  // Vimeo
+  "vimeo.com",
+
+  // SoundCloud
+  "soundcloud.com",
+
+  // Spotify
+  "spotify.com",
+  "spotify.link",
+
+  // Dailymotion
+  "dailymotion.com",
+  "dai.ly",
+
+  // Bilibili
+  "bilibili.com",
+  "b23.tv",
+  "bilibili.tv",
+
+  // Rumble
+  "rumble.com",
+
+  // Streamable & Loom
+  "streamable.com",
+  "loom.com",
+
+  // Bandcamp & Mixcloud
+  "bandcamp.com",
+  "mixcloud.com",
+
+  // Music Streaming & Podcasts
+  "audiomack.com",
+  "deezer.com",
+  "deezer.page.link",
+  "podcasts.apple.com",
+
+  // Alternative & Peer Video Platforms
+  "odysee.com",
+  "lbry.tv",
+  "bitchute.com",
+  "kick.com",
+  "coub.com",
+  "9gag.com",
+  "imgur.com",
+  "redgifs.com",
+  "rutube.ru",
+  "vk.com",
+  "vkvideo.ru",
+  "ok.ru",
+  "snapchat.com",
+  "tumblr.com",
+  "archive.org",
+  "ted.com",
+];
+
+/**
+ * Direct video, audio, or streaming manifest file extensions supported by yt-dlp / FFmpeg.
+ */
+const DIRECT_MEDIA_EXTENSIONS = new Set([
+  // Video
+  ".mp4",
+  ".m4v",
+  ".mkv",
+  ".webm",
+  ".mov",
+  ".avi",
+  ".flv",
+  ".wmv",
+  ".ts",
+  ".3gp",
+  // Audio
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".flac",
+  ".aac",
+  ".opus",
+  ".ogg",
+  ".wma",
+  // Streaming Manifests
+  ".m3u8",
+  ".mpd",
+]);
+
 export class YtDlpDownloader implements IDownloaderService {
   private ytdlpBinaryPath: string | null = null;
   private ffmpegBinaryPath: string | null = null;
@@ -205,7 +332,28 @@ export class YtDlpDownloader implements IDownloaderService {
     if (!url) return false;
     try {
       const parsed = new URL(url);
-      return ["http:", "https:"].includes(parsed.protocol);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return false;
+      }
+
+      const host = parsed.hostname.toLowerCase();
+
+      // 1. Check if hostname matches any known yt-dlp supported media platform
+      const isMediaDomain = SUPPORTED_MEDIA_DOMAINS.some(
+        (domain) => host === domain || host.endsWith(`.${domain}`)
+      );
+      if (isMediaDomain) {
+        return true;
+      }
+
+      // 2. Check if the URL directly points to a media file or streaming manifest (ignoring query parameters)
+      const pathname = parsed.pathname.toLowerCase();
+      const ext = path.extname(pathname);
+      if (DIRECT_MEDIA_EXTENSIONS.has(ext)) {
+        return true;
+      }
+
+      return false;
     } catch {
       return false;
     }
