@@ -295,7 +295,7 @@ export class BotService {
   private async handleDirectUrlSubmission(chatId: number, url: string): Promise<void> {
     const initMsg = await this.telegram.sendMessage({
       chat_id: chatId,
-      text: `🔍 *${BOT_NAME}* detected media link. Fetching details & qualities...`,
+      text: `🔍 *${BOT_NAME}* detected a link. Fetching more info...`,
       parse_mode: "Markdown",
     });
 
