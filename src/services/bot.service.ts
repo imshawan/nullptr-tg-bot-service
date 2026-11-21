@@ -661,13 +661,17 @@ export class BotService {
             result.title
           );
 
+          const isWebm = result.format === "webm" || result.filename.endsWith(".webm");
           const text = [
             `🎬 *${result.title}*`,
-            `📦 File Size: *${sizeMb} MB*`,
+            `📦 File Size: *${sizeMb} MB*${isWebm ? " (4K/2K WebM)" : ""}`,
             "",
             `🚀 *High-Speed Streaming & Direct Download:*`,
             `• ▶️ *Stream & Watch:* [Open Web Player](${downloadUrl})`,
             `• 📥 *Download / Save:* [Direct File Download](${downloadUrl}?dl=1)`,
+            ...(isWebm
+              ? ["", "💡 _High-res (4K/2K) streams play directly in the Web Player or via VLC/Chrome._"]
+              : []),
             "",
             `⏱️ _This link will remain active for 2 hours._`,
           ].join("\n");
