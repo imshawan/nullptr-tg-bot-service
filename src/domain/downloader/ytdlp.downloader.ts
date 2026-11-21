@@ -213,7 +213,40 @@ export class YtDlpDownloader implements IDownloaderService {
 
   public extractUrl(text: string): string | null {
     const match = text.match(/https?:\/\/[^\s<>"'{}|\\^`[\]]+/i);
-    return match ? match[0] : null;
+    return match ? this.cleanMediaUrl(match[0]) : null;
+  }
+
+  /**
+   * Cleans media URLs by stripping tracking parameters (e.g. ?igsh=..., ?utm_source=...)
+   * which can cause Instagram and other extractors to fail with empty responses.
+   */
+  public cleanMediaUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (
+        parsed.hostname.includes("instagram.com") ||
+        parsed.hostname.includes("instagr.am")
+      ) {
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  }
+
+  public isInstagramUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return (
+        parsed.hostname.includes("instagram.com") ||
+        parsed.hostname.includes("instagr.am")
+      );
+    } catch {
+      return false;
+    }
   }
 
   public isYouTubeUrl(url: string): boolean {
@@ -270,6 +303,12 @@ export class YtDlpDownloader implements IDownloaderService {
       );
     }
 
+    if (lower.includes("empty media response")) {
+      return new AppError(
+        "Instagram sent an empty media response. The post or reel may be private, age-restricted, or temporarily restricted from anonymous access."
+      );
+    }
+
     if (lower.includes("requested format is not available")) {
       return new AppError("The requested format or quality is not available for this media.");
     }
@@ -308,12 +347,34 @@ export class YtDlpDownloader implements IDownloaderService {
     }
   }
 
-  public async getMediaInfo(url: string): Promise<MediaInfo> {
+  public async getMediaInfo(rawUrl: string): Promise<MediaInfo> {
+    const url = this.cleanMediaUrl(rawUrl);
+    const isIg = this.isInstagramUrl(url);
+
+    try {
+      return await this.executeGetMediaInfo(url);
+    } catch (err: unknown) {
+      if (isIg && err instanceof Error && err.message.toLowerCase().includes("empty media response")) {
+        this.logger.warn(
+          `Instagram returned empty media response for ${url}. Retrying with ios app_id extractor arg...`
+        );
+        try {
+          return await this.executeGetMediaInfo(url, ["--extractor-args", "instagram:app_id=ios"]);
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async executeGetMediaInfo(url: string, extraArgs: string[] = []): Promise<MediaInfo> {
     const binary = await this.ensureBinary();
 
     return new Promise((resolve, reject) => {
       const args = [
         ...this.buildBaseArgs(),
+        ...extraArgs,
         "--dump-single-json",
         "--skip-download",
         url,
@@ -480,6 +541,31 @@ export class YtDlpDownloader implements IDownloaderService {
   }
 
   public async download(options: DownloadOptions): Promise<DownloadResult> {
+    const url = this.cleanMediaUrl(options.url);
+    const cleanOptions = { ...options, url };
+    const isIg = this.isInstagramUrl(url);
+
+    try {
+      return await this.executeDownload(cleanOptions);
+    } catch (err: unknown) {
+      if (isIg && err instanceof Error && err.message.toLowerCase().includes("empty media response")) {
+        this.logger.warn(
+          `Instagram returned empty media response on download for ${url}. Retrying with ios app_id...`
+        );
+        try {
+          return await this.executeDownload(cleanOptions, ["--extractor-args", "instagram:app_id=ios"]);
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async executeDownload(
+    options: DownloadOptions,
+    extraArgs: string[] = []
+  ): Promise<DownloadResult> {
     const binary = await this.ensureBinary();
     const ffmpegBinary = await this.ensureFfmpegBinary();
     const isAudio = AUDIO_FORMATS.includes(options.format);
@@ -488,6 +574,7 @@ export class YtDlpDownloader implements IDownloaderService {
 
     const args: string[] = [
       ...this.buildBaseArgs(),
+      ...extraArgs,
       "-o",
       outputTemplate,
     ];
