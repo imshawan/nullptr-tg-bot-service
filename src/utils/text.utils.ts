@@ -103,6 +103,15 @@ export function isTelegramButtonUrl(urlStr: string): boolean {
 }
 
 /**
+ * Escapes special characters for safe inclusion in Telegram legacy Markdown (v1).
+ * Specifically escapes *, _, `, and [ to prevent malformed entities from breaking messages.
+ */
+export function escapeMarkdown(str: string): string {
+  if (!str) return "";
+  return str.replace(/([*_`\[])/g, "\\$1");
+}
+
+/**
  * Escapes characters for safe inclusion in HTML.
  */
 export function escapeHtml(str: string): string {

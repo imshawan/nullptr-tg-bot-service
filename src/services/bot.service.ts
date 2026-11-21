@@ -17,6 +17,7 @@ import {
   detectDownloadIntent,
   detectWhoAmIIntent,
   formatWhoAmIResponse,
+  escapeMarkdown,
 } from "@/utils/text.utils";
 import { buildDynamicContextPrompt } from "@/prompts";
 import { TelegramApiError } from "@/core/errors/app-error";
@@ -663,7 +664,7 @@ export class BotService {
 
           const isWebm = result.format === "webm" || result.filename.endsWith(".webm");
           const text = [
-            `🎬 *${result.title}*`,
+            `🎬 *${escapeMarkdown(result.title)}*`,
             `📦 File Size: *${sizeMb} MB*${isWebm ? " (4K/2K WebM)" : ""}`,
             "",
             `🚀 *High-Speed Streaming & Direct Download:*`,
@@ -744,7 +745,7 @@ export class BotService {
           );
 
           const text = [
-            `🎵 *${result.title}*`,
+            `🎵 *${escapeMarkdown(result.title)}*`,
             `📦 File Size: *${sizeMb} MB*`,
             "",
             `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,

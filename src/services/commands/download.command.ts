@@ -3,7 +3,7 @@ import { BOT_NAME } from "@/config";
 import { ICommandHandler, CommandContext } from "@/services/commands/command.interface";
 import { MediaFormat, MediaQuality, AudioBitrate } from "@/domain/downloader/downloader.types";
 import { InlineKeyboardMarkup } from "@/domain/telegram/telegram.types";
-import { isTelegramButtonUrl } from "@/utils/text.utils";
+import { isTelegramButtonUrl, escapeMarkdown } from "@/utils/text.utils";
 import {
   createDownloadSession,
   buildMainMenu,
@@ -150,7 +150,7 @@ export class DownloadCommand implements ICommandHandler {
 
           const isWebm = result.format === "webm" || result.filename.endsWith(".webm");
           const text = [
-            `🎬 *${result.title}*`,
+            `🎬 *${escapeMarkdown(result.title)}*`,
             `📦 File Size: *${sizeMb} MB*${isWebm ? " (4K/2K WebM)" : ""}`,
             "",
             `🚀 *High-Speed Streaming & Direct Download:*`,
@@ -229,7 +229,7 @@ export class DownloadCommand implements ICommandHandler {
           );
 
           const text = [
-            `🎵 *${result.title}*`,
+            `🎵 *${escapeMarkdown(result.title)}*`,
             `📦 File Size: *${sizeMb} MB*`,
             "",
             `ℹ️ *File exceeds Telegram's 50 MB in-chat upload limit.*`,

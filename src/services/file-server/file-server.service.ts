@@ -135,10 +135,12 @@ export class FileServerService implements IFileServerService {
     const durationMs = (ttlMinutes || this.defaultTtlMinutes) * 60 * 1000;
     const now = Date.now();
 
+    const userFriendlyFilename = (title ? `${title}${ext}` : filename).replace(/^dl_\d+_[a-z0-9]+_/, "");
+
     const entry: DownloadEntry = {
       token,
       filePath,
-      filename,
+      filename: userFriendlyFilename,
       title: title || filename,
       fileSizeBytes: stats.size,
       mimeType,
@@ -149,7 +151,17 @@ export class FileServerService implements IFileServerService {
     this.entries.set(token, entry);
     await this.saveRegistry();
 
-    const safeFilename = encodeURIComponent(filename.replace(/[/\\?%*:|"<>]/g, "_"));
+    // Sanitize filename for URL path to prevent breaking Telegram Markdown links:
+    // Strip temporary prefix, replace all brackets, parentheses, spaces, and unsafe symbols with underscores.
+    const cleanBase = filename
+      .replace(/^dl_\d+_[a-z0-9]+_/, "")
+      .replace(/[/\\?%*:|"<>()[\]#\s]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const safeFilename = encodeURIComponent(
+      (cleanBase || "media").endsWith(ext) ? cleanBase : `${cleanBase}${ext}`
+    ).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
     const downloadUrl = `${this.getBaseUrl()}/dl/${token}/${safeFilename}`;
 
     this.logger.info(
